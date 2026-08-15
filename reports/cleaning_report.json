@@ -1,0 +1,13 @@
+{
+  "raw_match_rows": 7566,
+  "invalid_match_rows_removed": 1,
+  "clean_match_rows": 7565,
+  "original_point_rows": 1284276,
+  "conflicting_matches_excluded": 8,
+  "rows_from_conflicting_matches_excluded": 3493,
+  "exact_duplicate_rows_removed": 375,
+  "clean_point_rows": 1280408,
+  "matches_without_points": 41,
+  "enriched_point_rows": 1280408,
+  "unique_enriched_matches": 7524
+}

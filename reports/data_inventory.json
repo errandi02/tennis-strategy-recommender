@@ -1,0 +1,116 @@
+{
+  "source": {
+    "repository": "https://github.com/JeffSackmann/tennis_MatchChartingProject",
+    "commit": "2c59eef194967e688b69e73df344184a06322cd8"
+  },
+  "matches": {
+    "rows": 7566,
+    "columns": [
+      "match_id",
+      "Player 1",
+      "Player 2",
+      "Pl 1 hand",
+      "Pl 2 hand",
+      "Date",
+      "Tournament",
+      "Round",
+      "Time",
+      "Court",
+      "Surface",
+      "Umpire",
+      "Best of",
+      "Final TB?",
+      "Charted by"
+    ],
+    "unique_match_ids": 7565,
+    "duplicate_match_ids": 1,
+    "missing_match_ids": 0,
+    "invalid_dates": 1,
+    "minimum_date": "1960-05-29",
+    "maximum_date": "2026-05-21"
+  },
+  "points": {
+    "total_rows": 1284276,
+    "unique_matches": 7532,
+    "duplicate_match_point_keys": 2111,
+    "columns_consistent_between_files": true,
+    "files": {
+      "charting-m-points-2010s.csv": {
+        "rows": 357229,
+        "columns": [
+          "match_id",
+          "Pt",
+          "Set1",
+          "Set2",
+          "Gm1",
+          "Gm2",
+          "Pts",
+          "Gm#",
+          "TbSet",
+          "Svr",
+          "1st",
+          "2nd",
+          "Notes",
+          "PtWinner"
+        ],
+        "unique_matches": 2232,
+        "missing_match_id": 0,
+        "missing_point_number": 0,
+        "missing_first_serve_sequence": 0,
+        "missing_second_serve_sequence": 223357
+      },
+      "charting-m-points-2020s.csv": {
+        "rows": 547478,
+        "columns": [
+          "match_id",
+          "Pt",
+          "Set1",
+          "Set2",
+          "Gm1",
+          "Gm2",
+          "Pts",
+          "Gm#",
+          "TbSet",
+          "Svr",
+          "1st",
+          "2nd",
+          "Notes",
+          "PtWinner"
+        ],
+        "unique_matches": 3337,
+        "missing_match_id": 0,
+        "missing_point_number": 0,
+        "missing_first_serve_sequence": 0,
+        "missing_second_serve_sequence": 345516
+      },
+      "charting-m-points-to-2009.csv": {
+        "rows": 379569,
+        "columns": [
+          "match_id",
+          "Pt",
+          "Set1",
+          "Set2",
+          "Gm1",
+          "Gm2",
+          "Pts",
+          "Gm#",
+          "TbSet",
+          "Svr",
+          "1st",
+          "2nd",
+          "Notes",
+          "PtWinner"
+        ],
+        "unique_matches": 1963,
+        "missing_match_id": 0,
+        "missing_point_number": 0,
+        "missing_first_serve_sequence": 0,
+        "missing_second_serve_sequence": 232388
+      }
+    }
+  },
+  "relationship": {
+    "point_matches_missing_from_metadata": 0,
+    "metadata_matches_without_points": 33
+  }
+}
