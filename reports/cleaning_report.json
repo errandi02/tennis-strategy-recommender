@@ -1,6 +1,9 @@
 {
   "raw_match_rows": 7566,
+  "malformed_csv_rows_detected": 2,
   "invalid_match_rows_removed": 1,
+  "metadata_rows_corrected": 1,
+  "unknown_surface_matches": 0,
   "clean_match_rows": 7565,
   "original_point_rows": 1284276,
   "conflicting_matches_excluded": 8,

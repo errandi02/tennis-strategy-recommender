@@ -8,3 +8,17 @@ CONFLICTING_MATCH_IDS = {
     "19990704-M-Wimbledon-F-Pete_Sampras-Andre_Agassi",
     "20220812-M-Canada_Masters-QF-Hubert_Hurkacz-Nick_Kyrgios",
 }
+
+
+MATCH_METADATA_CORRECTIONS = {
+    (
+        "20240915-M-Davis_Cup_World_Group-RR-"
+        "Tallon_Griekspoor-Flavio_Cobolli"
+    ): {
+        "surface": "Hard",
+        "umpire": "Eva Asderaki-Moore",
+        "best_of": "3",
+        "final_tiebreak": "1",
+        "charted_by": None,
+    },
+}

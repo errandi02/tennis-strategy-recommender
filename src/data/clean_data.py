@@ -1,9 +1,13 @@
+import csv
 import json
 from pathlib import Path
 
 import pandas as pd
 
-from src.data.quality_rules import CONFLICTING_MATCH_IDS
+from src.data.quality_rules import (
+    CONFLICTING_MATCH_IDS,
+    MATCH_METADATA_CORRECTIONS,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "data" / "raw" / "match_charting_project"
@@ -43,6 +47,69 @@ POINT_COLUMNS = {
     "PtWinner": "point_winner",
 }
 
+ALLOWED_SURFACES = {"Hard", "Clay", "Grass"}
+ALLOWED_BEST_OF = {"3", "5"}
+
+
+def count_malformed_csv_rows(csv_path: Path) -> int:
+    with csv_path.open(encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.reader(csv_file)
+        header = next(reader)
+        expected_columns = len(header)
+        return sum(len(row) != expected_columns for row in reader)
+
+
+def apply_match_metadata_corrections(
+    matches: pd.DataFrame,
+) -> tuple[pd.DataFrame, int]:
+    corrected = matches.copy(deep=True)
+    corrected_match_ids = set()
+
+    for match_id, values in MATCH_METADATA_CORRECTIONS.items():
+        match_mask = corrected["match_id"].eq(match_id)
+        match_changed = False
+
+        for column, value in values.items():
+            if pd.isna(value):
+                values_are_equal = corrected.loc[match_mask, column].isna()
+            else:
+                values_are_equal = (
+                    corrected.loc[match_mask, column]
+                    .eq(value)
+                    .fillna(False)
+                )
+
+            if not values_are_equal.all():
+                match_changed = True
+
+            corrected.loc[match_mask, column] = value
+
+        if match_changed:
+            corrected_match_ids.add(match_id)
+
+    return corrected, len(corrected_match_ids)
+
+
+def validate_clean_matches(matches: pd.DataFrame) -> None:
+    invalid_surfaces = ~matches["surface"].isin(ALLOWED_SURFACES)
+    if invalid_surfaces.any():
+        values = sorted(
+            matches.loc[invalid_surfaces, "surface"]
+            .fillna("<missing>")
+            .astype(str)
+            .unique()
+        )
+        raise ValueError(f"Superficies no permitidas: {values}")
+
+    non_null_best_of = matches["best_of"].dropna()
+    invalid_best_of = ~non_null_best_of.isin(ALLOWED_BEST_OF)
+    if invalid_best_of.any():
+        values = sorted(non_null_best_of.loc[invalid_best_of].unique())
+        raise ValueError(f"Valores de best_of no permitidos: {values}")
+
+    if matches["match_id"].duplicated().any():
+        raise ValueError("match_id no es único en los metadatos.")
+
 
 def load_raw_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     matches = pd.read_csv(
@@ -62,7 +129,9 @@ def load_raw_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     return matches, points
 
 
-def clean_matches(matches: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def clean_matches(
+    matches: pd.DataFrame,
+) -> tuple[pd.DataFrame, int, int]:
     parsed_dates = pd.to_datetime(
         matches["Date"],
         format="%Y%m%d",
@@ -76,8 +145,12 @@ def clean_matches(matches: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
     clean = clean.drop_duplicates(subset=["match_id"], keep="first")
     clean = clean.rename(columns=MATCH_COLUMNS)
+    clean, metadata_rows_corrected = apply_match_metadata_corrections(
+        clean
+    )
+    validate_clean_matches(clean)
 
-    return clean, invalid_date_rows
+    return clean, invalid_date_rows, metadata_rows_corrected
 
 
 def clean_points(points: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -134,7 +207,12 @@ def clean_points(points: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 def main() -> None:
     matches_raw, points_raw = load_raw_data()
 
-    matches, invalid_date_rows = clean_matches(matches_raw)
+    malformed_csv_rows = count_malformed_csv_rows(
+        RAW_DIR / "charting-m-matches.csv"
+    )
+    matches, invalid_date_rows, metadata_rows_corrected = clean_matches(
+        matches_raw
+    )
     points, point_summary = clean_points(points_raw)
 
     enriched = points.merge(
@@ -155,9 +233,6 @@ def main() -> None:
             f"Hay {points_without_metadata} puntos sin metadatos."
         )
 
-    if matches["match_id"].duplicated().any():
-        raise ValueError("match_id no es único en los metadatos.")
-
     if enriched.duplicated(["match_id", "point_number"]).any():
         raise ValueError("La clave de punto no es única tras la unión.")
 
@@ -175,7 +250,10 @@ def main() -> None:
 
     report = {
         "raw_match_rows": int(len(matches_raw)),
+        "malformed_csv_rows_detected": malformed_csv_rows,
         "invalid_match_rows_removed": invalid_date_rows,
+        "metadata_rows_corrected": metadata_rows_corrected,
+        "unknown_surface_matches": int(matches["surface"].isna().sum()),
         "clean_match_rows": int(len(matches)),
         **point_summary,
         "matches_without_points": matches_without_points,
