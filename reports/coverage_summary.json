@@ -1,0 +1,81 @@
+{
+  "source": "data/processed/points_enriched.parquet",
+  "point_rows": 1280408,
+  "unique_matches": 7524,
+  "participant_rows": 15048,
+  "player_surface_year_combinations": 5114,
+  "distinct_players": 1002,
+  "first_year": 1960,
+  "last_year": 2026,
+  "surface_distribution": {
+    "Clay": {
+      "matches": 1872,
+      "points": 311240,
+      "distinct_players": 587
+    },
+    "Grass": {
+      "matches": 829,
+      "points": 168079,
+      "distinct_players": 359
+    },
+    "Hard": {
+      "matches": 4823,
+      "points": 801089,
+      "distinct_players": 753
+    }
+  },
+  "matches_per_combination": {
+    "minimum": 1.0,
+    "mean": 2.9425107547907703,
+    "median": 1.0,
+    "p25": 1.0,
+    "p50": 1.0,
+    "p75": 3.0,
+    "p90": 7.0,
+    "p95": 10.0,
+    "p99": 21.0,
+    "maximum": 57.0
+  },
+  "points_per_combination": {
+    "minimum": 26.0,
+    "mean": 500.74618693781775,
+    "median": 261.0,
+    "p25": 151.0,
+    "p50": 261.0,
+    "p75": 542.75,
+    "p90": 1141.7999999999993,
+    "p95": 1791.699999999999,
+    "p99": 3449.74,
+    "maximum": 8849.0
+  },
+  "descriptive_match_cuts": {
+    "unit": "player_surface_year_combination",
+    "proportion_scale": "0_to_1",
+    "denominator": 5114,
+    "cuts": {
+      "at_least_1_matches": {
+        "numerator": 5114,
+        "proportion": 1.0
+      },
+      "at_least_3_matches": {
+        "numerator": 1493,
+        "proportion": 0.291943684004693
+      },
+      "at_least_5_matches": {
+        "numerator": 822,
+        "proportion": 0.16073523660539696
+      },
+      "at_least_10_matches": {
+        "numerator": 297,
+        "proportion": 0.058075870160344156
+      }
+    }
+  },
+  "descriptive_cuts_are_model_thresholds": false,
+  "reconciliation": {
+    "expected_participant_rows": 15048,
+    "actual_participant_rows": 15048,
+    "expected_coverage_points": 2560816,
+    "actual_coverage_points": 2560816
+  }
+}
