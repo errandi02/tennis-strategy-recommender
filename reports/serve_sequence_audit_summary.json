@@ -1,0 +1,180 @@
+{
+  "artifact_determinism": {
+    "csv_index": false,
+    "csv_null_representation": "<NULL>",
+    "json_key_order": "lexicographic",
+    "timestamps_included": false,
+    "utf8": true
+  },
+  "columns": {
+    "first_serve": {
+      "character_summary": {
+        "ascii_characters": 62,
+        "control_characters": 0,
+        "non_ascii_characters": 0,
+        "unique_characters": 62
+      },
+      "original_length_greater_than_zero_sequences": 1280408,
+      "presence": {
+        "empty": {
+          "denominator": 1280408,
+          "numerator": 0,
+          "proportion": 0.0
+        },
+        "null": {
+          "denominator": 1280408,
+          "numerator": 0,
+          "proportion": 0.0
+        },
+        "substantive": {
+          "denominator": 1280408,
+          "numerator": 1280408,
+          "proportion": 1.0
+        },
+        "whitespace_only": {
+          "denominator": 1280408,
+          "numerator": 0,
+          "proportion": 0.0
+        }
+      },
+      "raw_length": {
+        "max": 179,
+        "mean": 7.2056039949766015,
+        "median": 4.0,
+        "min": 1,
+        "p25": 2.0,
+        "p75": 10.0,
+        "p90": 17.0,
+        "p95": 23.0,
+        "p99": 38.0
+      },
+      "trimmed_length": {
+        "max": 179,
+        "mean": 7.205371256661939,
+        "median": 4.0,
+        "min": 1,
+        "p25": 2.0,
+        "p75": 10.0,
+        "p90": 17.0,
+        "p95": 23.0,
+        "p99": 38.0
+      },
+      "whitespace_position_rows": {
+        "internal_whitespace": 0,
+        "leading_whitespace": 0,
+        "trailing_whitespace": 298
+      }
+    },
+    "second_serve": {
+      "character_summary": {
+        "ascii_characters": 57,
+        "control_characters": 0,
+        "non_ascii_characters": 0,
+        "unique_characters": 57
+      },
+      "original_length_greater_than_zero_sequences": 481543,
+      "presence": {
+        "empty": {
+          "denominator": 1280408,
+          "numerator": 0,
+          "proportion": 0.0
+        },
+        "null": {
+          "denominator": 1280408,
+          "numerator": 798865,
+          "proportion": 0.6239144085322803
+        },
+        "substantive": {
+          "denominator": 1280408,
+          "numerator": 481508,
+          "proportion": 0.3760582564307627
+        },
+        "whitespace_only": {
+          "denominator": 1280408,
+          "numerator": 35,
+          "proportion": 2.7335036956969967e-05
+        }
+      },
+      "raw_length": {
+        "max": 210,
+        "mean": 12.702103446628858,
+        "median": 10.0,
+        "min": 1,
+        "p25": 6.0,
+        "p75": 16.0,
+        "p90": 25.0,
+        "p95": 32.0,
+        "p99": 48.0
+      },
+      "trimmed_length": {
+        "max": 210,
+        "mean": 12.701974693848731,
+        "median": 10.0,
+        "min": 0,
+        "p25": 6.0,
+        "p75": 16.0,
+        "p90": 25.0,
+        "p95": 32.0,
+        "p99": 48.0
+      },
+      "whitespace_position_rows": {
+        "internal_whitespace": 4,
+        "leading_whitespace": 35,
+        "trailing_whitespace": 43
+      }
+    }
+  },
+  "endpoint_denominator_definition": "Number of sequences whose original, unmodified length is greater than zero.",
+  "escaped_text_definition": {
+    "mechanism": "Visible ASCII is preserved; backslash is doubled; space, tab, newline, carriage return, non-ASCII and control characters use explicit escape sequences.",
+    "round_trip": "Decode the ASCII escaped representation with the Python unicode_escape codec."
+  },
+  "global_key_uniqueness": {
+    "is_unique": true,
+    "method": "Exact in-memory set of (match_id, point_number) across all batches.",
+    "space_complexity": "O(number_of_point_rows)"
+  },
+  "interpretation_scope": {
+    "grammar_applied": false,
+    "parser_applied": false,
+    "statement": "Only observable text content is described."
+  },
+  "length_metric_definition": {
+    "denominator": "Non-null sequence values.",
+    "percentile_method": "linear",
+    "percentiles": [
+      "p25",
+      "p50",
+      "p75",
+      "p90",
+      "p95",
+      "p99"
+    ],
+    "raw_length": "len(sequence) on the original, unmodified string.",
+    "trimmed_length": "len(sequence.strip()) using Unicode whitespace semantics; secondary metric only."
+  },
+  "period_definitions": {
+    "2010s": "2010 <= year <= 2019",
+    "2020s": "year >= 2020",
+    "to_2009": "year <= 2009"
+  },
+  "presence_state_definitions": {
+    "empty": "Non-null string with original length zero.",
+    "null": "Null value in the input column.",
+    "substantive": "Non-null, non-empty string that is not whitespace-only.",
+    "whitespace_only": "Non-empty string for which every character is Unicode whitespace."
+  },
+  "reconciliations": {
+    "endpoint_counts_equal_original_length_gt_zero_denominator": true,
+    "global_point_key_unique": true,
+    "group_dimensions_equal_total_rows": true,
+    "presence_states_equal_total_rows": true
+  },
+  "schema_version": 1,
+  "source": {
+    "date_max": "2026-05-21",
+    "date_min": "1960-05-29",
+    "path": "data/processed/points_enriched.parquet",
+    "point_rows": 1280408
+  }
+}

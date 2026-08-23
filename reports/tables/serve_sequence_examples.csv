@@ -1,0 +1,21 @@
+selection_reason,selection_rank,match_id,point_number,column,presence_state,raw_length,trimmed_length,sequence_original,sequence_escaped,related_character_code_point
+presence_substantive,1,19600529-M-Roland_Garros-F-Nicola_Pietrangeli-Luis_Ayala,1,first_serve,substantive,1.0,1.0,R,R,
+maximum_raw_length,2,20210209-M-Australian_Open-R128-Hubert_Hurkacz-Mikael_Ymer,160,first_serve,substantive,179.0,179.0,5f29b29b28b39b38b38b38b38b39b29b39b39b37b38b18f28f39m29f38b28b38b29f18f17f29b29b29f38b37b29f18f29b27s29b28f18r29f17f29b37s38b19f18f18f29b39b29f18r28f19f28f38b37b38b19r18f18f27b38*,5f29b29b28b39b38b38b38b38b39b29b39b39b37b38b18f28f39m29f38b28b38b29f18f17f29b29b29f38b37b29f18f29b27s29b28f18r29f17f29b37s38b19f18f18f29b39b29f18r28f19f28f38b37b38b19r18f18f27b38*,
+trailing_whitespace,3,19850629-M-Wimbledon-R32-Joakim_Nystrom-Boris_Becker,204,first_serve,substantive,3.0,2.0,4w ,4w\u0020,
+lowest_character_frequency,4,20250702-M-Wimbledon-R64-Gabriel_Diallo-Taylor_Fritz,70,first_serve,substantive,16.0,16.0,4+r2z38s1n#z3A$*,4+r2z38s1n#z3A$*,U+0024
+lowest_character_frequency,5,20180111-M-Auckland-QF-Karen_Khachanov-Juan_Martin_Del_Potro,132,first_serve,substantive,3.0,3.0,6d',6d',U+0027
+lowest_character_frequency,6,20240826-M-US_Open-R128-Giovanni_Mpetshi_Perricard-Tomas_Martin_Etcheverry,147,first_serve,substantive,2.0,2.0,)*,)*,U+0029
+lowest_character_frequency,7,19960605-M-Roland_Garros-QF-Pete_Sampras-Jim_Courier,176,first_serve,substantive,20.0,20.0,?s39b3b2b3b2b3b3b1w@,?s39b3b2b3b2b3b3b1w@,U+003F
+lowest_character_frequency,8,20250702-M-Wimbledon-R64-Gabriel_Diallo-Taylor_Fritz,70,first_serve,substantive,16.0,16.0,4+r2z38s1n#z3A$*,4+r2z38s1n#z3A$*,U+0041
+presence_null,9,19600529-M-Roland_Garros-F-Nicola_Pietrangeli-Luis_Ayala,1,second_serve,null,<NULL>,<NULL>,<NULL>,<NULL>,
+presence_whitespace_only,10,19810607-M-Roland_Garros-F-Bjorn_Borg-Ivan_Lendl,169,second_serve,whitespace_only,2.0,0.0,  ,\u0020\u0020,
+presence_substantive,11,19600529-M-Roland_Garros-F-Nicola_Pietrangeli-Luis_Ayala,10,second_serve,substantive,9.0,9.0,4s28r+3n@,4s28r+3n@,
+maximum_raw_length,12,20230118-M-Australian_Open-R64-Jason_Kubler-Karen_Khachanov,117,second_serve,substantive,210.0,210.0,5f27f38s38b39b28b38b37b37b29b39b39b39b28b38b38b38s39b19f28b39b28f19f28f37b39b38b39b38b28f38s38b39b39b38b38b38b18f28f38b39b27s38s39b38b39b39b38b38b38s38s39b19f19f29b38b39s39b37b29f29f27b28b28f28b29b29b39b38b;17*,5f27f38s38b39b28b38b37b37b29b39b39b39b28b38b38b38s39b19f28b39b28f19f28f37b39b38b39b38b28f38s38b39b39b38b38b38b18f28f38b39b27s38s39b38b39b39b38b38b38s38s39b19f19f29b38b39s39b37b29f29f27b28b28f28b29b29b39b38b;17*,
+leading_whitespace,13,19810607-M-Roland_Garros-F-Bjorn_Borg-Ivan_Lendl,169,second_serve,whitespace_only,2.0,0.0,  ,\u0020\u0020,
+trailing_whitespace,14,19810607-M-Roland_Garros-F-Bjorn_Borg-Ivan_Lendl,169,second_serve,whitespace_only,2.0,0.0,  ,\u0020\u0020,
+internal_whitespace,15,19960703-M-Wimbledon-QF-Richard_Krajicek-Pete_Sampras,171,second_serve,substantive,52.0,42.0,Play suspended- resumed next day at 550 PM          ,Play\u0020suspended-\u0020resumed\u0020next\u0020day\u0020at\u0020550\u0020PM\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020,
+lowest_character_frequency,16,20230120-M-Australian_Open-R32-Hubert_Hurkacz-Denis_Shapovalov,255,second_serve,substantive,7.0,7.0,o=38A&*,o=38A&*,U+0026
+lowest_character_frequency,17,20220719-M-Hamburg-R32-Nicola_Kuhn-Carlos_Alcaraz,61,second_serve,substantive,12.0,12.0,Tyyffww  )(),Tyyffww\u0020\u0020)(),U+0028
+lowest_character_frequency,18,20160612-M-Stuttgart-F-Dominic_Thiem-Philipp_Kohlschreiber,103,second_serve,substantive,1.0,1.0,.,.,U+002E
+lowest_character_frequency,19,20230120-M-Australian_Open-R32-Hubert_Hurkacz-Denis_Shapovalov,255,second_serve,substantive,7.0,7.0,o=38A&*,o=38A&*,U+0041
+lowest_character_frequency,20,19950530-M-Roland_Garros-R128-Patrick_Rafter-Sergi_Bruguera,93,second_serve,substantive,4.0,4.0,F1w#,F1w#,U+0046

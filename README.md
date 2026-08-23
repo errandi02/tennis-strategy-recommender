@@ -23,6 +23,22 @@ Consulta `PROJECT_CONTEXT.md` para el alcance completo y `AGENTS.md` para las re
 La procedencia y la notación oficial de las secuencias de servicio se documentan
 en [`docs/data/serve_sequence_grammar_sources.md`](docs/data/serve_sequence_grammar_sources.md).
 
+### Auditoría observable de secuencias de servicio
+
+La auditoría describe presencia, longitudes y caracteres de `first_serve` y
+`second_serve` sin aplicar una gramática ni un parser:
+
+```powershell
+python -m src.analysis.serve_sequence_audit
+```
+
+Artefactos versionables generados:
+
+- `reports/serve_sequence_audit_summary.json`
+- `reports/tables/serve_sequence_audit_by_group.csv`
+- `reports/tables/serve_sequence_character_inventory.csv`
+- `reports/tables/serve_sequence_examples.csv`
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
