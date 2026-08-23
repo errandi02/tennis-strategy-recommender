@@ -18,6 +18,11 @@ Demostrar empíricamente la viabilidad del Match Charting Project:
 
 Consulta `PROJECT_CONTEXT.md` para el alcance completo y `AGENTS.md` para las reglas de trabajo.
 
+## Documentación de datos
+
+La procedencia y la notación oficial de las secuencias de servicio se documentan
+en [`docs/data/serve_sequence_grammar_sources.md`](docs/data/serve_sequence_grammar_sources.md).
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
