@@ -39,6 +39,25 @@ Artefactos versionables generados:
 - `reports/tables/serve_sequence_character_inventory.csv`
 - `reports/tables/serve_sequence_examples.csv`
 
+### Análisis descriptivo de dirección del segundo servicio
+
+El análisis utiliza las secuencias sustantivas de `second_serve` para describir
+dirección, superficie, periodo y resultado observado del punto:
+
+```powershell
+python -m src.analysis.second_serve_direction_analysis
+```
+
+Artefactos versionables generados:
+
+- `reports/second_serve_direction_summary.json`
+- `reports/tables/second_serve_direction_by_group.csv`
+- `reports/tables/second_serve_direction_coverage.csv`
+
+El resultado es exclusivamente descriptivo y no estima efectos causales. No
+incluye longitud del intercambio ni lado de servicio, y sus cortes de cobertura
+no son umbrales aprobados para features o modelos.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y

@@ -1,0 +1,844 @@
+{
+  "annual_fragmentation": {
+    "combinations": 15330,
+    "conclusion": "El ano fragmenta la muestra; derived_period es la dimension temporal principal.",
+    "descriptive_point_cuts": {
+      "at_least_100_points": {
+        "denominator": 15330,
+        "numerator": 935,
+        "proportion": 0.06099151989562948,
+        "represented_servers": 111
+      },
+      "at_least_10_points": {
+        "denominator": 15330,
+        "numerator": 10934,
+        "proportion": 0.7132420091324201,
+        "represented_servers": 907
+      },
+      "at_least_25_points": {
+        "denominator": 15330,
+        "numerator": 5481,
+        "proportion": 0.35753424657534244,
+        "represented_servers": 483
+      },
+      "at_least_50_points": {
+        "denominator": 15330,
+        "numerator": 2585,
+        "proportion": 0.16862361382909327,
+        "represented_servers": 262
+      }
+    },
+    "matches_per_combination": {
+      "maximum": 57.0,
+      "median": 1.0,
+      "minimum": 1.0,
+      "p25": 1.0,
+      "p75": 3.0,
+      "p90": 7.0,
+      "p95": 10.0,
+      "p99": 21.0
+    },
+    "percentile_method": "linear",
+    "points_per_combination": {
+      "maximum": 702.0,
+      "median": 17.0,
+      "minimum": 1.0,
+      "p25": 9.0,
+      "p75": 35.0,
+      "p90": 73.0,
+      "p95": 111.0,
+      "p99": 218.0
+    },
+    "unit": "server_player_surface_year_direction"
+  },
+  "conservative_outcome_counts": {
+    "ace": 3517,
+    "fault": 42619,
+    "not_assigned": 432126,
+    "unreturned": 3246
+  },
+  "conservative_outcome_reconciliation": [
+    {
+      "contradictions": 0,
+      "denominator": 3517,
+      "examples": [],
+      "outcome": "ace",
+      "proportion": 0.0,
+      "rows": 3517
+    },
+    {
+      "contradictions": 0,
+      "denominator": 3246,
+      "examples": [],
+      "outcome": "unreturned",
+      "proportion": 0.0,
+      "rows": 3246
+    },
+    {
+      "contradictions": 8,
+      "denominator": 42619,
+      "examples": [
+        {
+          "match_id": "20060220-M-Dubai-R32-Stan_Wawrinka-Roger_Federer",
+          "point_number": 8,
+          "point_winner": 2,
+          "second_serve": "6w",
+          "server": 2
+        },
+        {
+          "match_id": "20061105-M-Paris_Masters-F-Nikolay_Davydenko-Dominik_Hrbaty",
+          "point_number": 136,
+          "point_winner": 2,
+          "second_serve": "6n",
+          "server": 2
+        },
+        {
+          "match_id": "20101111-M-Paris_Masters-R16-Tomas_Berdych-Nikolay_Davydenko",
+          "point_number": 118,
+          "point_winner": 1,
+          "second_serve": "4w",
+          "server": 1
+        },
+        {
+          "match_id": "20160118-M-Manila_CH-R32-Ruben_Gonzales-Igor_Sijsling",
+          "point_number": 41,
+          "point_winner": 1,
+          "second_serve": "4w",
+          "server": 1
+        },
+        {
+          "match_id": "20180615-M-Stuttgart-QF-Feliciano_Lopez-Nick_Kyrgios",
+          "point_number": 87,
+          "point_winner": 1,
+          "second_serve": "6n",
+          "server": 1
+        }
+      ],
+      "outcome": "fault",
+      "proportion": 0.00018770970693822005,
+      "rows": 42619
+    }
+  ],
+  "coverage_distribution": {
+    "all_directions": {
+      "combinations": 6303,
+      "descriptive_point_cuts": {
+        "at_least_100_points": {
+          "denominator": 6303,
+          "numerator": 1060,
+          "proportion": 0.16817388545137235,
+          "represented_servers": 223
+        },
+        "at_least_10_points": {
+          "denominator": 6303,
+          "numerator": 4749,
+          "proportion": 0.7534507377439315,
+          "represented_servers": 910
+        },
+        "at_least_25_points": {
+          "denominator": 6303,
+          "numerator": 2966,
+          "proportion": 0.47056957004600986,
+          "represented_servers": 560
+        },
+        "at_least_50_points": {
+          "denominator": 6303,
+          "numerator": 1894,
+          "proportion": 0.3004918292876408,
+          "represented_servers": 356
+        }
+      },
+      "matches_per_combination": {
+        "maximum": 238.0,
+        "median": 2.0,
+        "minimum": 1.0,
+        "p25": 1.0,
+        "p75": 6.0,
+        "p90": 16.0,
+        "p95": 28.0,
+        "p99": 82.0
+      },
+      "percentile_method": "linear",
+      "points_per_combination": {
+        "maximum": 2880.0,
+        "median": 22.0,
+        "minimum": 1.0,
+        "p25": 10.0,
+        "p75": 63.0,
+        "p90": 175.0,
+        "p95": 317.89999999999964,
+        "p99": 837.7599999999948
+      },
+      "unit": "server_player_surface_derived_period_direction"
+    },
+    "tactically_actionable_directions": {
+      "combinations": 6210,
+      "descriptive_point_cuts": {
+        "at_least_100_points": {
+          "denominator": 6210,
+          "numerator": 1060,
+          "proportion": 0.1706924315619968,
+          "represented_servers": 223
+        },
+        "at_least_10_points": {
+          "denominator": 6210,
+          "numerator": 4748,
+          "proportion": 0.764573268921095,
+          "represented_servers": 910
+        },
+        "at_least_25_points": {
+          "denominator": 6210,
+          "numerator": 2966,
+          "proportion": 0.47761674718196456,
+          "represented_servers": 560
+        },
+        "at_least_50_points": {
+          "denominator": 6210,
+          "numerator": 1894,
+          "proportion": 0.30499194847020933,
+          "represented_servers": 356
+        }
+      },
+      "matches_per_combination": {
+        "maximum": 238.0,
+        "median": 2.0,
+        "minimum": 1.0,
+        "p25": 1.0,
+        "p75": 6.0,
+        "p90": 16.0,
+        "p95": 28.0,
+        "p99": 83.81999999999971
+      },
+      "percentile_method": "linear",
+      "points_per_combination": {
+        "maximum": 2880.0,
+        "median": 22.0,
+        "minimum": 1.0,
+        "p25": 10.0,
+        "p75": 64.0,
+        "p90": 178.0,
+        "p95": 323.09999999999854,
+        "p99": 851.6499999999978
+      },
+      "unit": "server_player_surface_derived_period_direction"
+    }
+  },
+  "decisions": {
+    "descriptive_cuts_are_model_thresholds": false,
+    "direction_zero_tactically_actionable": false,
+    "rally_length_included": false,
+    "service_side_included": false
+  },
+  "definitions": {
+    "analytical_population": "Puntos con secuencia sustantiva de segundo servicio; no equivale necesariamente a todos los segundos servicios jugados.",
+    "derived_period": {
+      "2010s": "2010 <= year <= 2019",
+      "2020s": "year >= 2020",
+      "to_2009": "year <= 2009"
+    },
+    "direction_codes": {
+      "0": "unknown",
+      "4": "wide",
+      "5": "body",
+      "6": "t"
+    },
+    "outcome_policy": "Solo estructuras completas, consistentes, sin residuo ni warnings.",
+    "percentile_method": "linear"
+  },
+  "directions": [
+    {
+      "conservative_aces": 1401,
+      "conservative_faults": 15951,
+      "conservative_unreturned": 1336,
+      "derived_period": "<ALL>",
+      "dimension": "overall",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 176757,
+      "direction_proportion": 0.3670904740938883,
+      "group_second_serve_points": 481508,
+      "matches": 7522,
+      "server_win_rate": 0.517320389008639,
+      "server_wins": 91440,
+      "servers": 1001,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 51,
+      "conservative_faults": 11437,
+      "conservative_unreturned": 544,
+      "derived_period": "<ALL>",
+      "dimension": "overall",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 165841,
+      "direction_proportion": 0.3444200304044792,
+      "group_second_serve_points": 481508,
+      "matches": 7503,
+      "server_win_rate": 0.5083121785324498,
+      "server_wins": 84299,
+      "servers": 1002,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 2064,
+      "conservative_faults": 15197,
+      "conservative_unreturned": 1362,
+      "derived_period": "<ALL>",
+      "dimension": "overall",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 138592,
+      "direction_proportion": 0.2878290703373568,
+      "group_second_serve_points": 481508,
+      "matches": 7517,
+      "server_win_rate": 0.504675594550912,
+      "server_wins": 69944,
+      "servers": 991,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 1,
+      "conservative_faults": 34,
+      "conservative_unreturned": 4,
+      "derived_period": "<ALL>",
+      "dimension": "overall",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 148,
+      "direction_proportion": 0.0003073676865181,
+      "group_second_serve_points": 481508,
+      "matches": 91,
+      "server_win_rate": 0.4662162162162162,
+      "server_wins": 69,
+      "servers": 79,
+      "surface": "<ALL>",
+      "tactically_actionable": false
+    }
+  ],
+  "example_selection_policy": "Hasta cinco contradicciones por outcome, ordenadas por match_id y point_number.",
+  "limitations": [
+    "Analisis observacional y no causal.",
+    "La poblacion esta condicionada a una secuencia sustantiva de segundo servicio.",
+    "La cobertura varia entre jugadores, superficies y periodos.",
+    "No se interpreta el rally residual.",
+    "No se calcula rally length ni lado de servicio."
+  ],
+  "methodological_flags": {
+    "causal_effect_estimated": false,
+    "descriptive_analysis": true,
+    "model_feature_approved": false,
+    "model_thresholds_approved": false
+  },
+  "parser": {
+    "grammar_version": "mcp-0.3.2-project-0.2",
+    "serve_number": 2,
+    "version": "0.2.0"
+  },
+  "parser_coverage": {
+    "denominator_substantive_sequences": 481508,
+    "recognized_direction": 481338,
+    "structural_status": {
+      "consistent": 49383,
+      "incomplete": 431955,
+      "not_assessed": 170
+    },
+    "unique_sequences_parsed": 261817,
+    "with_residual": 432125,
+    "with_warnings": 432125,
+    "without_direction": 170
+  },
+  "population": {
+    "all_points": 1280408,
+    "matches": 7524,
+    "presence_states": {
+      "empty": {
+        "denominator": 1280408,
+        "numerator": 0,
+        "proportion": 0.0
+      },
+      "null": {
+        "denominator": 1280408,
+        "numerator": 798865,
+        "proportion": 0.6239144085322803
+      },
+      "substantive": {
+        "denominator": 1280408,
+        "numerator": 481508,
+        "proportion": 0.3760582564307627
+      },
+      "whitespace_only": {
+        "denominator": 1280408,
+        "numerator": 35,
+        "proportion": 2.7335036956969967e-05
+      }
+    },
+    "servers": 1002,
+    "substantive_second_serve_points": 481508
+  },
+  "reconciliations": {
+    "conservative_outcomes_mutually_exclusive": true,
+    "coverage_key_unique": true,
+    "coverage_points_reconciled": true,
+    "direction_partition_complete": true,
+    "group_dimensions_reconciled": true,
+    "presence_states_equal_source_rows": true,
+    "proportions_reconciled": true,
+    "summary_contract_reconciled": true
+  },
+  "results_by_period": [
+    {
+      "conservative_aces": 435,
+      "conservative_faults": 5163,
+      "conservative_unreturned": 66,
+      "derived_period": "to_2009",
+      "dimension": "derived_period",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 58533,
+      "direction_proportion": 0.4009137048883896,
+      "group_second_serve_points": 145999,
+      "matches": 1956,
+      "server_win_rate": 0.517383356397246,
+      "server_wins": 30284,
+      "servers": 357,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 15,
+      "conservative_faults": 2966,
+      "conservative_unreturned": 43,
+      "derived_period": "to_2009",
+      "dimension": "derived_period",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 46140,
+      "direction_proportion": 0.316029561846314,
+      "group_second_serve_points": 145999,
+      "matches": 1955,
+      "server_win_rate": 0.5138708279150411,
+      "server_wins": 23710,
+      "servers": 355,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 582,
+      "conservative_faults": 4689,
+      "conservative_unreturned": 93,
+      "derived_period": "to_2009",
+      "dimension": "derived_period",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 41200,
+      "direction_proportion": 0.282193713655573,
+      "group_second_serve_points": 145999,
+      "matches": 1955,
+      "server_win_rate": 0.5056796116504855,
+      "server_wins": 20834,
+      "servers": 355,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 0,
+      "conservative_faults": 18,
+      "conservative_unreturned": 0,
+      "derived_period": "to_2009",
+      "dimension": "derived_period",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 60,
+      "direction_proportion": 0.0004109617189158,
+      "group_second_serve_points": 145999,
+      "matches": 26,
+      "server_win_rate": 0.4666666666666667,
+      "server_wins": 28,
+      "servers": 24,
+      "surface": "<ALL>",
+      "tactically_actionable": false
+    },
+    {
+      "conservative_aces": 354,
+      "conservative_faults": 4186,
+      "conservative_unreturned": 175,
+      "derived_period": "2010s",
+      "dimension": "derived_period",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 47510,
+      "direction_proportion": 0.3552494821926617,
+      "group_second_serve_points": 133737,
+      "matches": 2231,
+      "server_win_rate": 0.5192170069459061,
+      "server_wins": 24668,
+      "servers": 412,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 14,
+      "conservative_faults": 3357,
+      "conservative_unreturned": 88,
+      "derived_period": "2010s",
+      "dimension": "derived_period",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 48432,
+      "direction_proportion": 0.3621436102200587,
+      "group_second_serve_points": 133737,
+      "matches": 2228,
+      "server_win_rate": 0.5065246118268913,
+      "server_wins": 24532,
+      "servers": 412,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 628,
+      "conservative_faults": 4073,
+      "conservative_unreturned": 221,
+      "derived_period": "2010s",
+      "dimension": "derived_period",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 37718,
+      "direction_proportion": 0.2820311506912821,
+      "group_second_serve_points": 133737,
+      "matches": 2230,
+      "server_win_rate": 0.506071371758842,
+      "server_wins": 19088,
+      "servers": 407,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 0,
+      "conservative_faults": 5,
+      "conservative_unreturned": 3,
+      "derived_period": "2010s",
+      "dimension": "derived_period",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 28,
+      "direction_proportion": 0.000209366143999,
+      "group_second_serve_points": 133737,
+      "matches": 26,
+      "server_win_rate": 0.5357142857142857,
+      "server_wins": 15,
+      "servers": 22,
+      "surface": "<ALL>",
+      "tactically_actionable": false
+    },
+    {
+      "conservative_aces": 612,
+      "conservative_faults": 6602,
+      "conservative_unreturned": 1095,
+      "derived_period": "2020s",
+      "dimension": "derived_period",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 70714,
+      "direction_proportion": 0.3504648811529846,
+      "group_second_serve_points": 201772,
+      "matches": 3335,
+      "server_win_rate": 0.5159940040161779,
+      "server_wins": 36488,
+      "servers": 469,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 22,
+      "conservative_faults": 5114,
+      "conservative_unreturned": 413,
+      "derived_period": "2020s",
+      "dimension": "derived_period",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 71269,
+      "direction_proportion": 0.353215510576294,
+      "group_second_serve_points": 201772,
+      "matches": 3320,
+      "server_win_rate": 0.5059282436964178,
+      "server_wins": 36057,
+      "servers": 470,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 854,
+      "conservative_faults": 6435,
+      "conservative_unreturned": 1048,
+      "derived_period": "2020s",
+      "dimension": "derived_period",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 59674,
+      "direction_proportion": 0.2957496580298555,
+      "group_second_serve_points": 201772,
+      "matches": 3332,
+      "server_win_rate": 0.5031001776317995,
+      "server_wins": 30022,
+      "servers": 465,
+      "surface": "<ALL>",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 1,
+      "conservative_faults": 11,
+      "conservative_unreturned": 1,
+      "derived_period": "2020s",
+      "dimension": "derived_period",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 60,
+      "direction_proportion": 0.0002973653430604,
+      "group_second_serve_points": 201772,
+      "matches": 39,
+      "server_win_rate": 0.4333333333333333,
+      "server_wins": 26,
+      "servers": 40,
+      "surface": "<ALL>",
+      "tactically_actionable": false
+    }
+  ],
+  "results_by_surface": [
+    {
+      "conservative_aces": 916,
+      "conservative_faults": 10118,
+      "conservative_unreturned": 921,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 109242,
+      "direction_proportion": 0.3586396630345927,
+      "group_second_serve_points": 304601,
+      "matches": 4821,
+      "server_win_rate": 0.5172369601435345,
+      "server_wins": 56504,
+      "servers": 753,
+      "surface": "Hard",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 23,
+      "conservative_faults": 7547,
+      "conservative_unreturned": 379,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 108305,
+      "direction_proportion": 0.3555635076706905,
+      "group_second_serve_points": 304601,
+      "matches": 4816,
+      "server_win_rate": 0.508074419463552,
+      "server_wins": 55027,
+      "servers": 753,
+      "surface": "Hard",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 1367,
+      "conservative_faults": 9701,
+      "conservative_unreturned": 940,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 86850,
+      "direction_proportion": 0.2851271006989471,
+      "group_second_serve_points": 304601,
+      "matches": 4821,
+      "server_win_rate": 0.5035924006908463,
+      "server_wins": 43737,
+      "servers": 747,
+      "surface": "Hard",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 1,
+      "conservative_faults": 20,
+      "conservative_unreturned": 1,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 85,
+      "direction_proportion": 0.0002790535815706,
+      "group_second_serve_points": 304601,
+      "matches": 49,
+      "server_win_rate": 0.4352941176470588,
+      "server_wins": 37,
+      "servers": 46,
+      "surface": "Hard",
+      "tactically_actionable": false
+    },
+    {
+      "conservative_aces": 240,
+      "conservative_faults": 3730,
+      "conservative_unreturned": 231,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 46029,
+      "direction_proportion": 0.398774972709788,
+      "group_second_serve_points": 115426,
+      "matches": 1872,
+      "server_win_rate": 0.5090269178126833,
+      "server_wins": 23430,
+      "servers": 586,
+      "surface": "Clay",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 8,
+      "conservative_faults": 2379,
+      "conservative_unreturned": 61,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 35531,
+      "direction_proportion": 0.3078249267929236,
+      "group_second_serve_points": 115426,
+      "matches": 1859,
+      "server_win_rate": 0.4963834398131209,
+      "server_wins": 17637,
+      "servers": 585,
+      "surface": "Clay",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 351,
+      "conservative_faults": 3305,
+      "conservative_unreturned": 201,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 33797,
+      "direction_proportion": 0.2928023149030547,
+      "group_second_serve_points": 115426,
+      "matches": 1867,
+      "server_win_rate": 0.4988312572121786,
+      "server_wins": 16859,
+      "servers": 578,
+      "surface": "Clay",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 0,
+      "conservative_faults": 5,
+      "conservative_unreturned": 2,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 31,
+      "direction_proportion": 0.0002685703394382,
+      "group_second_serve_points": 115426,
+      "matches": 29,
+      "server_win_rate": 0.4516129032258064,
+      "server_wins": 14,
+      "servers": 28,
+      "surface": "Clay",
+      "tactically_actionable": false
+    },
+    {
+      "conservative_aces": 245,
+      "conservative_faults": 2103,
+      "conservative_unreturned": 184,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "4",
+      "direction_label": "wide",
+      "direction_points": 21486,
+      "direction_proportion": 0.3494738211805273,
+      "group_second_serve_points": 61481,
+      "matches": 829,
+      "server_win_rate": 0.5355114958577678,
+      "server_wins": 11506,
+      "servers": 359,
+      "surface": "Grass",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 20,
+      "conservative_faults": 1511,
+      "conservative_unreturned": 104,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "5",
+      "direction_label": "body",
+      "direction_points": 22005,
+      "direction_proportion": 0.3579154535547567,
+      "group_second_serve_points": 61481,
+      "matches": 828,
+      "server_win_rate": 0.5287434673937741,
+      "server_wins": 11635,
+      "servers": 358,
+      "surface": "Grass",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 346,
+      "conservative_faults": 2191,
+      "conservative_unreturned": 221,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "6",
+      "direction_label": "t",
+      "direction_points": 17945,
+      "direction_proportion": 0.2918787918218636,
+      "group_second_serve_points": 61481,
+      "matches": 829,
+      "server_win_rate": 0.5209250487601003,
+      "server_wins": 9348,
+      "servers": 359,
+      "surface": "Grass",
+      "tactically_actionable": true
+    },
+    {
+      "conservative_aces": 0,
+      "conservative_faults": 9,
+      "conservative_unreturned": 1,
+      "derived_period": "<ALL>",
+      "dimension": "surface",
+      "direction_code": "0",
+      "direction_label": "unknown",
+      "direction_points": 32,
+      "direction_proportion": 0.000520486003806,
+      "group_second_serve_points": 61481,
+      "matches": 13,
+      "server_win_rate": 0.5625,
+      "server_wins": 18,
+      "servers": 13,
+      "surface": "Grass",
+      "tactically_actionable": false
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "point_rows": 1280408
+  }
+}
