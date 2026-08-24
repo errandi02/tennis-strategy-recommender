@@ -82,6 +82,40 @@ class ServicePrefix:
 
 
 @dataclass(frozen=True)
+class ServeAce:
+    structure_type: str
+    prefix: ServicePrefix
+    outcome_code: str
+    start: int
+    end: int
+    rule_id: str
+    resolves_point: bool
+
+
+@dataclass(frozen=True)
+class ServeUnreturned:
+    structure_type: str
+    prefix: ServicePrefix
+    outcome_code: str
+    start: int
+    end: int
+    rule_id: str
+    resolves_point: bool
+
+
+@dataclass(frozen=True)
+class ServeFault:
+    structure_type: str
+    prefix: ServicePrefix
+    fault_code: str
+    fault_type: str
+    start: int
+    end: int
+    rule_id: str
+    resolves_point: bool | None
+
+
+@dataclass(frozen=True)
 class SpecialCodeStructure:
     structure_type: str
     code: str
@@ -98,7 +132,7 @@ class ParseResult:
     serve_number: int
     input_state: InputState
     tokens: tuple[Token, ...]
-    structure: ServicePrefix | SpecialCodeStructure | None
+    structure: ServicePrefix | ServeAce | ServeUnreturned | ServeFault | SpecialCodeStructure | None
     consumed_spans: tuple[Span, ...]
     residual_spans: tuple[Span, ...]
     residual_text: str
@@ -127,6 +161,17 @@ _SPECIAL_MEANINGS = _immutable_mapping(
         ("R", "unobserved_point_awarded_to_returner"),
         ("P", "point_penalty_against_server"),
         ("Q", "point_penalty_against_returner"),
+    )
+)
+_FAULT_TYPES = _immutable_mapping(
+    (
+        ("n", "net"),
+        ("w", "wide"),
+        ("d", "long"),
+        ("x", "wide_and_long"),
+        ("g", "foot_fault"),
+        ("e", "unknown"),
+        ("!", "framed"),
     )
 )
 
@@ -194,16 +239,46 @@ def _canonical_structure(raw: str, tokens: tuple[Token, ...], serve_number: int)
     while cursor < len(raw) and raw[cursor] == "c":
         cursor += 1
     if cursor < len(raw) and raw[cursor] in _DIRECTION_VALUES:
-        end = cursor + 1
-        return ServicePrefix(
+        prefix_end = cursor + 1
+        prefix = ServicePrefix(
             "serve_prefix",
             tuple(raw[:cursor]),
             raw[cursor],
             _DIRECTION_VALUES[raw[cursor]],
             0,
-            end,
-            tuple(token.rule_id for token in tokens[:end]),
+            prefix_end,
+            tuple(token.rule_id for token in tokens[:prefix_end]),
         )
+        if prefix_end >= len(raw):
+            return prefix
+        outcome = raw[prefix_end]
+        outcome_end = prefix_end + 1
+        if outcome == "*":
+            return ServeAce(
+                "serve_ace", prefix, "*", 0, outcome_end, "SYN-SERVE-ACE", True
+            )
+        if outcome == "#":
+            return ServeUnreturned(
+                "serve_unreturned",
+                prefix,
+                "#",
+                0,
+                outcome_end,
+                "SYN-SERVE-UNRETURNED",
+                True,
+            )
+        if outcome in _FAULT_TYPES:
+            return ServeFault(
+                "serve_fault",
+                prefix,
+                outcome,
+                _FAULT_TYPES[outcome],
+                0,
+                outcome_end,
+                "SYN-SERVE-FAULT",
+                False if serve_number == 1 else None,
+            )
+        return prefix
     return None
 
 
@@ -212,7 +287,12 @@ def _warning_sort_key(warning: Diagnostic) -> tuple[int, int, str, str]:
 
 
 def _canonical_consumed_spans(
-    structure: ServicePrefix | SpecialCodeStructure | None,
+    structure: ServicePrefix
+    | ServeAce
+    | ServeUnreturned
+    | ServeFault
+    | SpecialCodeStructure
+    | None,
 ) -> tuple[Span, ...]:
     return () if structure is None else (Span(structure.start, structure.end),)
 
@@ -221,11 +301,30 @@ def _canonical_warnings(
     raw: str,
     tokens: tuple[Token, ...],
     consumed: tuple[Span, ...],
+    structure: ServicePrefix
+    | ServeAce
+    | ServeUnreturned
+    | ServeFault
+    | SpecialCodeStructure
+    | None,
 ) -> tuple[Diagnostic, ...]:
     consumed_positions = {
         position for span in consumed for position in range(span.start, span.end)
     }
     warnings = []
+    if isinstance(structure, (ServeAce, ServeUnreturned, ServeFault)) and (
+        structure.end < len(raw)
+    ):
+        residual_start = structure.end
+        if isinstance(structure, ServeFault) and raw[residual_start] in _FAULT_TYPES:
+            code = "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION"
+            message = "La combinacion de codigos de fallo no esta documentada."
+        else:
+            code = "W_CONTENT_AFTER_SERVICE_OUTCOME"
+            message = "Existe contenido residual posterior al resultado del servicio."
+        warnings.append(
+            Diagnostic(code, residual_start, len(raw), message)
+        )
     special_with_extra = len(raw) > 1 and any(
         character in "SRPQV" for character in raw
     )
@@ -252,7 +351,7 @@ def _canonical_warnings(
             message = "Caracter sin regla en el vocabulario documental."
         else:
             code = "W_DOCUMENTED_TOKEN_NOT_CONSUMED"
-            message = "Caracter documentado no consumido por el parser 0.1.0."
+            message = f"Caracter documentado no consumido por el parser {PARSER_VERSION}."
         warnings.append(Diagnostic(code, token.start, token.end, message))
         if token.raw_text in "SRPQV" and not special_with_extra:
             warnings.append(
@@ -270,14 +369,22 @@ def _canonical_coverages(
     raw: str,
     tokens: tuple[Token, ...],
     consumed: tuple[Span, ...],
-    structure: ServicePrefix | SpecialCodeStructure | None,
+    structure: ServicePrefix
+    | ServeAce
+    | ServeUnreturned
+    | ServeFault
+    | SpecialCodeStructure
+    | None,
 ) -> tuple[Coverage, Coverage, Coverage]:
     lexical_numerator = sum(
         token.token_type == "documented_character" for token in tokens
     )
     syntactic_numerator = sum(span.end - span.start for span in consumed)
     semantic_numerator = 0
-    if isinstance(structure, (ServicePrefix, SpecialCodeStructure)):
+    if isinstance(
+        structure,
+        (ServicePrefix, ServeAce, ServeUnreturned, ServeFault, SpecialCodeStructure),
+    ):
         semantic_numerator = structure.end - structure.start
     return (
         _coverage(lexical_numerator, len(raw)),
@@ -289,7 +396,12 @@ def _canonical_coverages(
 def _canonical_statuses(
     raw: str | None,
     lexical_coverage: Coverage,
-    structure: ServicePrefix | SpecialCodeStructure | None,
+    structure: ServicePrefix
+    | ServeAce
+    | ServeUnreturned
+    | ServeFault
+    | SpecialCodeStructure
+    | None,
     residual: tuple[Span, ...],
 ) -> tuple[LexicalStatus, StructuralStatus]:
     if raw is None or raw == "":
@@ -325,7 +437,7 @@ def parse_sequence(raw: str | None, serve_number: int) -> ParseResult:
     structure = _canonical_structure(raw, tokens, serve_number)
     consumed = _canonical_consumed_spans(structure)
     residual = _complement_spans(len(raw), consumed)
-    warnings_tuple = _canonical_warnings(raw, tokens, consumed)
+    warnings_tuple = _canonical_warnings(raw, tokens, consumed, structure)
     lexical_coverage, syntactic_coverage, semantic_coverage = (
         _canonical_coverages(raw, tokens, consumed, structure)
     )
@@ -477,7 +589,9 @@ def validate_parsed_sequence(result: ParseResult) -> None:
     expected_warnings = (
         ()
         if raw is None or raw == ""
-        else _canonical_warnings(raw, expected_tokens, expected_consumed)
+        else _canonical_warnings(
+            raw, expected_tokens, expected_consumed, expected_structure
+        )
     )
     if not isinstance(result.warnings, tuple) or not all(
         isinstance(warning, Diagnostic) for warning in result.warnings

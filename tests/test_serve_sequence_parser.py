@@ -8,9 +8,14 @@ from src.parsing.serve_sequence import (
     Diagnostic,
     InputState,
     LexicalStatus,
+    ServicePrefix,
+    ServeAce,
+    ServeFault,
+    ServeUnreturned,
     Span,
     StructuralStatus,
     _DIRECTION_VALUES,
+    _FAULT_TYPES,
     _SPECIAL_MEANINGS,
     parse_sequence,
     serialize_parse_result,
@@ -236,6 +241,8 @@ def test_results_and_rule_catalog_are_immutable():
         _DIRECTION_VALUES["4"] = "changed"
     with pytest.raises(TypeError):
         _SPECIAL_MEANINGS["R"] = "changed"
+    with pytest.raises(TypeError):
+        _FAULT_TYPES["n"] = "changed"
     with pytest.raises(FrozenInstanceError):
         RULES[0].candidate_families += ("changed",)
     with pytest.raises(FrozenInstanceError):
@@ -268,6 +275,183 @@ def test_synthetic_non_bmp_character_uses_project_interpretation_provenance():
     assert rule.evidence_level == "project_interpretation"
     assert "complemento del vocabulario oficial inspeccionado" in rule.source
     assert warning_codes(result) == ["W_UNKNOWN_CHARACTER"]
+
+
+@pytest.mark.parametrize("raw", ["4*", "5*", "6*", "0*", "c4*", "cc6*"])
+@pytest.mark.parametrize("serve_number", [1, 2])
+def test_serve_ace_consumes_exact_outcome(raw, serve_number):
+    result = parse_sequence(raw, serve_number)
+    assert isinstance(result.structure, ServeAce)
+    assert result.structure.prefix.direction == raw[-2]
+    assert result.structure.outcome_code == "*"
+    assert result.structure.rule_id == "SYN-SERVE-ACE"
+    assert result.structure.resolves_point is True
+    assert result.consumed_spans == (Span(0, len(raw)),)
+    assert result.residual_spans == ()
+    assert result.syntactic_coverage.proportion == 1.0
+    assert result.semantic_coverage.proportion == 1.0
+    assert result.structural_status is StructuralStatus.CONSISTENT
+    assert result.warnings == ()
+
+
+@pytest.mark.parametrize("raw", ["4#", "5#", "6#", "0#", "c4#", "cc6#"])
+@pytest.mark.parametrize("serve_number", [1, 2])
+def test_serve_unreturned_consumes_exact_outcome(raw, serve_number):
+    result = parse_sequence(raw, serve_number)
+    assert isinstance(result.structure, ServeUnreturned)
+    assert result.structure.prefix.direction == raw[-2]
+    assert result.structure.outcome_code == "#"
+    assert result.structure.rule_id == "SYN-SERVE-UNRETURNED"
+    assert result.structure.resolves_point is True
+    assert result.consumed_spans == (Span(0, len(raw)),)
+    assert result.residual_text == ""
+    assert result.structural_status is StructuralStatus.CONSISTENT
+
+
+@pytest.mark.parametrize(
+    ("code", "fault_type"),
+    [("n", "net"), ("w", "wide"), ("d", "long"), ("x", "wide_and_long"), ("g", "foot_fault"), ("e", "unknown"), ("!", "framed")],
+)
+@pytest.mark.parametrize(("serve_number", "resolves_point"), [(1, False), (2, None)])
+def test_each_atomic_serve_fault(code, fault_type, serve_number, resolves_point):
+    result = parse_sequence(f"5{code}", serve_number)
+    assert isinstance(result.structure, ServeFault)
+    assert result.structure.fault_code == code
+    assert result.structure.fault_type == fault_type
+    assert result.structure.rule_id == "SYN-SERVE-FAULT"
+    assert result.structure.resolves_point is resolves_point
+    assert result.consumed_spans == (Span(0, 2),)
+    assert result.residual_spans == ()
+    assert result.structural_status is StructuralStatus.CONSISTENT
+
+
+@pytest.mark.parametrize(
+    ("raw", "consumed", "residual", "structural_code"),
+    [
+        ("4wd", "4w", "d", "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION"),
+        ("4!n", "4!", "n", "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION"),
+        ("4nx", "4n", "x", "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION"),
+        ("5*d", "5*", "d", "W_CONTENT_AFTER_SERVICE_OUTCOME"),
+        ("4w ", "4w", " ", "W_CONTENT_AFTER_SERVICE_OUTCOME"),
+        ("5*?", "5*", "?", "W_CONTENT_AFTER_SERVICE_OUTCOME"),
+    ],
+)
+def test_outcome_stops_and_preserves_trailing_residue(
+    raw, consumed, residual, structural_code
+):
+    result = parse_sequence(raw, 1)
+    assert result.consumed_spans == (Span(0, len(consumed)),)
+    assert result.residual_spans == (Span(len(consumed), len(raw)),)
+    assert result.residual_text == residual
+    assert result.structural_status is StructuralStatus.INCOMPLETE
+    assert structural_code in warning_codes(result)
+    structural = [
+        warning
+        for warning in result.warnings
+        if warning.code.startswith("W_CONTENT_AFTER")
+        or warning.code.startswith("W_UNDOCUMENTED_SERVE_FAULT")
+    ]
+    assert len(structural) == 1
+    assert (structural[0].start, structural[0].end) == (len(consumed), len(raw))
+
+
+def test_long_content_after_ace_is_never_resumed():
+    raw = "6*f28f1f1b3-"
+    result = parse_sequence(raw, 1)
+    assert isinstance(result.structure, ServeAce)
+    assert result.consumed_spans == (Span(0, 2),)
+    assert result.residual_text == "f28f1f1b3-"
+    assert warning_codes(result).count("W_CONTENT_AFTER_SERVICE_OUTCOME") == 1
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_structure", "expected_residual"),
+    [
+        ("6f#", ServicePrefix, "f#"),
+        ("4f3*", ServicePrefix, "f3*"),
+        ("4+w", ServicePrefix, "+w"),
+        ("4?*", ServicePrefix, "?*"),
+        ("f3*", None, "f3*"),
+        ("?5*", None, "?5*"),
+        ("c?4*", None, "c?4*"),
+    ],
+)
+def test_outcomes_are_not_connected_across_residue(
+    raw, expected_structure, expected_residual
+):
+    result = parse_sequence(raw, 1)
+    if expected_structure is None:
+        assert result.structure is None
+    else:
+        assert isinstance(result.structure, expected_structure)
+    assert result.residual_text == expected_residual
+    assert not isinstance(result.structure, (ServeAce, ServeUnreturned, ServeFault))
+
+
+def test_version_and_new_rules_identify_parser_020():
+    assert PARSER_VERSION == "0.2.0"
+    assert GRAMMAR_VERSION == "mcp-0.3.2-project-0.2"
+    for rule_id in (
+        "SYN-SERVE-ACE",
+        "SYN-SERVE-UNRETURNED",
+        "SYN-SERVE-FAULT",
+        "SYN-SERVE-FAULT-SINGLE-CODE",
+        "SYN-SERVE-OUTCOME-STOPS",
+        "WARN-CONTENT-AFTER-SERVICE-OUTCOME",
+        "WARN-UNDOCUMENTED-SERVE-FAULT-COMBINATION",
+    ):
+        assert get_rule(rule_id).applies_from == "0.2.0"
+
+
+def _outcome_structure_corruptions():
+    ace = parse_sequence("5*", 1)
+    unreturned = parse_sequence("c4#", 2)
+    fault_first = parse_sequence("5d", 1)
+    fault_second = parse_sequence("5d", 2)
+    trailing = parse_sequence("4wd", 1)
+    structural_warning = next(
+        warning
+        for warning in trailing.warnings
+        if warning.code == "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION"
+    )
+    return (
+        ("ace_structure_type", replace(ace, structure=replace(ace.structure, structure_type="changed"))),
+        ("ace_prefix", replace(ace, structure=replace(ace.structure, prefix=replace(ace.structure.prefix, direction="6")))),
+        ("ace_outcome_code", replace(ace, structure=replace(ace.structure, outcome_code="#"))),
+        ("unreturned_outcome_code", replace(unreturned, structure=replace(unreturned.structure, outcome_code="*"))),
+        ("fault_code", replace(fault_first, structure=replace(fault_first.structure, fault_code="q"))),
+        ("fault_type", replace(fault_first, structure=replace(fault_first.structure, fault_type="deep"))),
+        ("outcome_rule_id", replace(ace, structure=replace(ace.structure, rule_id="SYN-SERVE-FAULT"))),
+        ("outcome_start", replace(ace, structure=replace(ace.structure, start=1))),
+        ("outcome_end", replace(ace, structure=replace(ace.structure, end=1))),
+        ("outcome_not_after_prefix", replace(ace, structure=replace(ace.structure, prefix=replace(ace.structure.prefix, end=0)))),
+        ("ace_resolves_point", replace(ace, structure=replace(ace.structure, resolves_point=False))),
+        ("unreturned_resolves_point", replace(unreturned, structure=replace(unreturned.structure, resolves_point=False))),
+        ("first_fault_resolves_point", replace(fault_first, structure=replace(fault_first.structure, resolves_point=None))),
+        ("second_fault_resolves_point", replace(fault_second, structure=replace(fault_second.structure, resolves_point=False))),
+        ("outcome_consumed_span", replace(ace, consumed_spans=(Span(0, 1),), residual_spans=(Span(1, 2),), residual_text="*")),
+        ("trailing_residue_omitted", replace(trailing, residual_spans=(), residual_text="")),
+        ("structural_warning_omitted", replace(trailing, warnings=tuple(warning for warning in trailing.warnings if warning is not structural_warning))),
+        ("structural_warning_added", replace(ace, warnings=(structural_warning,), has_no_warnings=False)),
+        ("structural_warning_incorrect", replace(trailing, warnings=tuple(replace(warning, code="W_CONTENT_AFTER_SERVICE_OUTCOME") if warning is structural_warning else warning for warning in trailing.warnings))),
+        ("outcome_coverage", replace(ace, semantic_coverage=Coverage(1, 2, 0.5))),
+        ("outcome_state", replace(ace, structural_status=StructuralStatus.INCOMPLETE)),
+        ("unsupported_structure", replace(ace, structure=ace.structure.prefix)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("corruption_name", "corrupted"),
+    _outcome_structure_corruptions(),
+    ids=[item[0] for item in _outcome_structure_corruptions()],
+)
+def test_outcome_structure_corruptions_fail_validation_and_serialization(
+    corruption_name, corrupted
+):
+    with pytest.raises((TypeError, ValueError)):
+        validate_parsed_sequence(corrupted)
+    with pytest.raises((TypeError, ValueError)):
+        serialize_parse_result(corrupted)
 
 
 def _contract_corruptions():
