@@ -1,0 +1,172 @@
+{
+  "adjusted_analysis": {
+    "available_packages": {
+      "scipy": true,
+      "sklearn": false,
+      "statsmodels": true
+    },
+    "formula": "server_won_point ~ direction + surface + derived_period + server_player",
+    "reason": "El ajuste queda pendiente de aprobacion metodologica aunque exista soporte estadistico.",
+    "status": "not_available",
+    "variables": [
+      "direction",
+      "surface",
+      "derived_period",
+      "server_player"
+    ]
+  },
+  "analysis": "second_serve_direction_baseline",
+  "coverage": {
+    "combinations": 6210,
+    "descriptive_point_cuts": {
+      "at_least_100_points": {
+        "denominator": 6210,
+        "numerator": 1060,
+        "proportion": 0.1706924315619968
+      },
+      "at_least_10_points": {
+        "denominator": 6210,
+        "numerator": 4748,
+        "proportion": 0.764573268921095
+      },
+      "at_least_25_points": {
+        "denominator": 6210,
+        "numerator": 2966,
+        "proportion": 0.47761674718196456
+      },
+      "at_least_50_points": {
+        "denominator": 6210,
+        "numerator": 1894,
+        "proportion": 0.30499194847020933
+      }
+    },
+    "matches_per_combination": {
+      "p25": 1.0,
+      "p50": 2.0,
+      "p75": 6.0,
+      "p90": 16.0,
+      "p95": 28.0,
+      "p99": 83.81999999999971
+    },
+    "percentile_method": "linear",
+    "points_per_combination": {
+      "p25": 10.0,
+      "p50": 22.0,
+      "p75": 64.0,
+      "p90": 178.0,
+      "p95": 323.09999999999854,
+      "p99": 851.6499999999978
+    },
+    "unit": "server_player_surface_derived_period_direction"
+  },
+  "descriptive": {
+    "association_language": "Las diferencias son descriptivas y no estiman efectos causales.",
+    "by_direction": [
+      {
+        "derived_period": "<ALL>",
+        "dimension": "direction",
+        "direction": "wide",
+        "matches": 7522,
+        "points": 176757,
+        "server_win_rate": 0.517320389008639,
+        "server_wins": 91440,
+        "servers": 1001,
+        "surface": "<ALL>"
+      },
+      {
+        "derived_period": "<ALL>",
+        "dimension": "direction",
+        "direction": "body",
+        "matches": 7503,
+        "points": 165841,
+        "server_win_rate": 0.5083121785324498,
+        "server_wins": 84299,
+        "servers": 1002,
+        "surface": "<ALL>"
+      },
+      {
+        "derived_period": "<ALL>",
+        "dimension": "direction",
+        "direction": "T",
+        "matches": 7517,
+        "points": 138592,
+        "server_win_rate": 0.504675594550912,
+        "server_wins": 69944,
+        "servers": 991,
+        "surface": "<ALL>"
+      }
+    ],
+    "overall": {
+      "matches": 7524,
+      "points": 481190,
+      "server_win_rate": 0.510573785822648,
+      "server_wins": 245683,
+      "servers": 1002
+    }
+  },
+  "identifiability": {
+    "matches": 7524,
+    "observations_by_direction": {
+      "T": 138592,
+      "body": 165841,
+      "wide": 176757
+    },
+    "servers": 1002,
+    "servers_with_at_least_10_points": 997,
+    "servers_with_multiple_directions": 1001,
+    "servers_with_three_directions": 991,
+    "surface_period_groups": 9
+  },
+  "methodological_limits": [
+    "No se producen recomendaciones tacticas.",
+    "No se estima un efecto causal.",
+    "No se usa rally length, resto, golpes ni informacion posterior al punto.",
+    "No hay train/test split ni prediccion online.",
+    "Los cortes de cobertura son descriptivos, no umbrales aprobados."
+  ],
+  "population": {
+    "analytic_points": 481190,
+    "audit": {
+      "conservative_outcome_diagnostic": {
+        "ace": 3517,
+        "fault": 42619,
+        "not_assigned": 432126,
+        "unreturned": 3246
+      },
+      "eligible_rows": 481190,
+      "excluded_direction_0": 148,
+      "excluded_without_recognized_direction": 170,
+      "recognized_direction_rows": 481338,
+      "source_rows": 1280408,
+      "substantive_second_serve_rows": 481508,
+      "unique_sequences_parsed": 261817
+    },
+    "definition": "Segundo saque sustantivo con prefijo inicial reconocido y direccion 4, 5 o 6; el rally posterior no es filtro.",
+    "matches": 7524,
+    "servers": 1002
+  },
+  "reconciliations": {
+    "coverage_equals_population": true,
+    "direction_points_equal_population": true,
+    "group_keys_unique": true,
+    "no_nan_or_inf": true,
+    "rates_equal_wins_over_points": true,
+    "summary_contract_reconciled": true,
+    "wins_equal_global_wins": true
+  },
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet"
+  },
+  "version": 1
+}

@@ -58,6 +58,46 @@ El resultado es exclusivamente descriptivo y no estima efectos causales. No
 incluye longitud del intercambio ni lado de servicio, y sus cortes de cobertura
 no son umbrales aprobados para features o modelos.
 
+### Baseline descriptivo de segundo servicio
+
+El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
+inicial reconocido en direccion `4`, `5` o `6`. Los warnings, el residuo y el
+rally posterior no excluyen el punto; los outcomes conservadores son solo un
+diagnostico.
+
+```powershell
+python -m src.analysis.second_serve_direction_baseline
+```
+
+Artefactos versionables generados:
+
+- `reports/second_serve_direction_baseline_summary.json`
+- `reports/tables/second_serve_direction_baseline_by_group.csv`
+
+Este analisis no genera recomendaciones, no estima causalidad y no utiliza rally
+length, resto, golpes, train/test split ni features historicas.
+
+### Modelo ajustado de direccion del segundo servicio
+
+La especificacion asociativa prevista usa `wide`, `Hard`, `to_2009` y un
+servidor de referencia determinista. No se ajusta en la implementacion actual:
+la estimacion preventiva de memoria excede el limite seguro antes de construir
+la matriz densa.
+
+```powershell
+python -m src.analysis.second_serve_direction_adjusted
+```
+
+La especificacion deja previstos errores estandar robustos agrupados por
+`match_id` y genera:
+
+- `reports/second_serve_direction_adjusted_summary.json`
+- `reports/tables/second_serve_direction_adjusted_coefficients.csv`
+
+No hay OR, IC ni p-values publicados. Una futura alternativa requeriria diseno
+disperso o logistica condicional; no esta implementada. El analisis no es causal
+ni produce recomendaciones tacticas.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y

@@ -1,0 +1,98 @@
+{
+  "analysis_name": "second_serve_direction_adjusted",
+  "analysis_version": 1,
+  "analytical_points": 481190,
+  "bytes_per_dense_element": 8,
+  "categorical_inputs": {
+    "derived_period": {
+      "categories": [
+        "2010s",
+        "2020s",
+        "to_2009"
+      ],
+      "reference": "to_2009"
+    },
+    "direction": {
+      "categories": [
+        "wide",
+        "body",
+        "T"
+      ],
+      "reference": "wide"
+    },
+    "server_player": {
+      "categories": 1002,
+      "reference": "Aaron Krickstein",
+      "servers_with_fewer_than_10_points": 5
+    },
+    "surface": {
+      "categories": [
+        "Clay",
+        "Grass",
+        "Hard"
+      ],
+      "reference": "Hard"
+    }
+  },
+  "coefficients_contract": {
+    "coefficient_rows": 0,
+    "confidence_interval": "95% odds-ratio interval",
+    "csv_columns": [
+      "term",
+      "variable",
+      "level",
+      "reference_level",
+      "coefficient",
+      "odds_ratio",
+      "std_error",
+      "statistic",
+      "p_value",
+      "ci_low",
+      "ci_high"
+    ],
+    "direction_terms": [
+      "body vs wide",
+      "T vs wide"
+    ],
+    "odds_ratio": "exp(coefficient)"
+  },
+  "estimated_dense_design_bytes": 3880316160,
+  "estimator": "GLM binomial (planned, not fitted)",
+  "excluded_direction_zero": 148,
+  "excluded_without_recognized_direction": 170,
+  "global_direction_test": {
+    "reason": "estimated_dense_design_exceeds_memory_limit",
+    "status": "not_available"
+  },
+  "matches": 7524,
+  "memory_limit_bytes": 536870912,
+  "methodological_limits": [
+    "Analisis asociativo, no causal.",
+    "No produce recomendaciones tacticas.",
+    "No usa rally length, resto, golpes, train/test split ni features historicas.",
+    "Los errores estandar se agruparan por match_id solo cuando el modelo este disponible."
+  ],
+  "model_formula": "server_won_point ~ C(direction, Treatment(reference=\"wide\")) + C(surface, Treatment(reference=\"Hard\")) + C(derived_period, Treatment(reference=\"to_2009\")) + C(server_player, Treatment(reference=\"Aaron Krickstein\"))",
+  "model_status": "not_available",
+  "n_observations": 481190,
+  "planned_model_columns": 1008,
+  "planned_model_rows": 481190,
+  "population_by_direction": {
+    "T": 138592,
+    "body": 165841,
+    "wide": 176757
+  },
+  "reconciliations": {
+    "binary_outcome": true,
+    "coefficient_values_finite": true,
+    "known_directions_only": true,
+    "population_matches_baseline": true,
+    "summary_contract_reconciled": true
+  },
+  "reference_direction": "wide",
+  "servers": 1002,
+  "source": "data/processed/points_enriched.parquet",
+  "source_rows": 1280408,
+  "standard_error_method": "cluster_robust_by_match_id",
+  "substantive_second_serve_points": 481508
+}
