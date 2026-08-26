@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from src.analysis.sparse_logistic import build_design, cluster_covariance, fit_mle, inference, wald_test
 
 from src.analysis.second_serve_direction_baseline import (
     DIRECTION_ORDER,
@@ -32,6 +33,8 @@ MODEL_FORMULA = (
 STANDARD_ERROR_METHOD = "cluster_robust_by_match_id"
 MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
 BYTES_PER_DENSE_ELEMENT = 8
+INITIAL_MAX_ITERATIONS = 200
+CONTINUATION_MAX_ITERATIONS = 800
 SUMMARY_PATH = REPORTS_DIR / "second_serve_direction_adjusted_summary.json"
 COEFFICIENTS_PATH = TABLES_DIR / "second_serve_direction_adjusted_coefficients.csv"
 
@@ -67,30 +70,22 @@ def _assert_json_finite(value: Any, path: str = "root") -> None:
         return
 
 
-def _statsmodels_available() -> bool:
-    return importlib.util.find_spec("statsmodels") is not None
-
-
-def _coefficient_row(term: str, coefficient: float, std_error: float, statistic: float,
+def _coefficient_row(term_metadata: dict[str, Any], coefficient: float, std_error: float, statistic: float,
                      p_value: float, ci_low: float, ci_high: float) -> dict[str, Any]:
-    variable = "other"
-    level = term
-    reference = ""
-    if "direction" in term and "[T.body]" in term:
-        variable, level, reference = "direction", "body", REFERENCE_DIRECTION
-    elif "direction" in term and "[T.T]" in term:
-        variable, level, reference = "direction", "T", REFERENCE_DIRECTION
-    elif "surface" in term:
-        variable, level, reference = "surface", term.rsplit("[T.", 1)[-1].rstrip("]"), ""
-    elif "derived_period" in term:
-        variable, level, reference = "derived_period", term.rsplit("[T.", 1)[-1].rstrip("]"), ""
-    elif "server_player" in term:
-        variable, level, reference = "server_player", term.rsplit("[T.", 1)[-1].rstrip("]"), ""
+    required = {"term", "variable", "level", "reference_level", "column_index"}
+    if not required.issubset(term_metadata):
+        raise ValueError("Metadatos canonicos de termino incompletos.")
+    term = term_metadata["term"]
+    variable = term_metadata["variable"]
+    level = term_metadata["level"]
+    reference = term_metadata["reference_level"]
+    if variable not in {"intercept", "direction", "surface", "derived_period", "server_player"}:
+        raise ValueError(f"Variable de termino desconocida: {variable}")
     return {
         "term": term,
         "variable": variable,
         "level": level,
-        "reference_level": reference,
+        "reference_level": "" if reference is None else reference,
         "coefficient": float(coefficient),
         "odds_ratio": float(np.exp(coefficient)),
         "std_error": float(std_error),
@@ -101,19 +96,20 @@ def _coefficient_row(term: str, coefficient: float, std_error: float, statistic:
     }
 
 
+def _attempt_summary(attempt: int, diagnostics: dict[str, Any]) -> dict[str, Any]:
+    """Diagnostico serializable, sin coeficientes, de un intento BFGS."""
+    keys = (
+        "initial_point", "used_warm_start", "optimizer", "tolerance", "max_iterations",
+        "converged", "optimizer_success", "optimizer_status", "optimizer_message",
+        "iterations", "objective_value", "log_likelihood", "gradient_norm",
+        "max_abs_coefficient", "minimum_probability", "maximum_probability",
+        "saturated_probability_count", "hessian_status", "covariance_status",
+        "finite_coefficients", "finite_probabilities", "publishable", "reason", "reason_codes",
+    )
+    return {"attempt": attempt, **{key: diagnostics[key] for key in keys}}
+
+
 def fit_adjusted_model(analytic: pd.DataFrame) -> tuple[dict[str, Any], pd.DataFrame]:
-    if not _statsmodels_available():
-        return (
-            {
-                "model_status": "not_available",
-                "reason": "statsmodels no esta instalado en el entorno actual; se declaro en requirements.txt y no se instalan dependencias durante la ejecucion.",
-                "formula": MODEL_FORMULA,
-                "reference_direction": REFERENCE_DIRECTION,
-                "estimator": "statsmodels Logit",
-                "standard_error_method": STANDARD_ERROR_METHOD,
-            },
-            pd.DataFrame(columns=COEFFICIENT_COLUMNS),
-        )
     model_data = analytic.copy()
     server_reference = sorted(model_data["server_player"].unique())[0]
     formula = MODEL_FORMULA.format(server_reference=server_reference)
@@ -122,145 +118,65 @@ def fit_adjusted_model(analytic: pd.DataFrame) -> tuple[dict[str, Any], pd.DataF
     expected_columns = 1 + 2 + 2 + 2 + (model_data["server_player"].nunique() - 1)
     expected_rows = int(len(model_data))
     estimated_dense_bytes = expected_rows * expected_columns * BYTES_PER_DENSE_ELEMENT
-    if estimated_dense_bytes > MEMORY_LIMIT_BYTES:
+    required_categories = {
+        "direction": ("wide", "body", "T"),
+        "surface": ("Hard", "Clay", "Grass"),
+        "derived_period": ("to_2009", "2010s", "2020s"),
+        "server_player": tuple(sorted(model_data["server_player"].unique())),
+    }
+    references = {"direction": "wide", "surface": "Hard", "derived_period": "to_2009", "server_player": server_reference}
+    design, term_mapping = build_design(model_data, required_categories, references)
+    csr_bytes = int(design.data.nbytes + design.indices.nbytes + design.indptr.nbytes)
+    hessian_bytes = int(design.shape[1] ** 2 * BYTES_PER_DENSE_ELEMENT)
+    peak_bytes = csr_bytes + 3 * hessian_bytes + int(model_data["match_id"].nunique()) * design.shape[1] * BYTES_PER_DENSE_ELEMENT
+    if peak_bytes > MEMORY_LIMIT_BYTES:
         return (
             {
                 "model_status": "not_available",
-                "reason": "estimated_dense_design_exceeds_memory_limit",
+                "reason": "estimated_sparse_peak_exceeds_memory_limit",
                 "formula": formula,
                 "reference_direction": REFERENCE_DIRECTION,
                 "server_reference": server_reference,
-                "estimator": "GLM binomial (planned, not fitted)",
+                "estimator": "sparse logistic MLE (planned, not fitted)",
                 "standard_error_method": STANDARD_ERROR_METHOD,
                 "n_observations": expected_rows,
                 "planned_model_rows": expected_rows,
                 "planned_model_columns": int(expected_columns),
                 "bytes_per_dense_element": BYTES_PER_DENSE_ELEMENT,
-                "estimated_dense_design_bytes": int(estimated_dense_bytes),
-                "memory_limit_bytes": MEMORY_LIMIT_BYTES,
+                "estimated_dense_design_bytes": int(estimated_dense_bytes), "sparse_shape": list(design.shape), "sparse_nnz": int(design.nnz), "sparse_bytes": csr_bytes, "hessian_bytes": hessian_bytes, "estimated_peak_bytes": peak_bytes, "memory_limit_bytes": MEMORY_LIMIT_BYTES,
             },
             pd.DataFrame(columns=COEFFICIENT_COLUMNS),
         )
-    model_data["direction"] = pd.Categorical(
-        model_data["direction"].astype(str),
-        categories=DIRECTION_ORDER,
-        ordered=False,
-    )
-    model_data["surface"] = pd.Categorical(model_data["surface"], categories=["Hard", "Clay", "Grass"])
-    model_data["derived_period"] = pd.Categorical(model_data["derived_period"], categories=["to_2009", "2010s", "2020s"])
-    model_data["server_player"] = pd.Categorical(model_data["server_player"], categories=sorted(model_data["server_player"].unique()))
-    grouped = model_data.groupby(["match_id", "server_player", "surface", "derived_period", "direction"], observed=True, as_index=False).agg(successes=("server_won_point", "sum"), points=("server_won_point", "size"))
-    grouped["failures"] = grouped["points"] - grouped["successes"]
-    estimated_dense_bytes = int(len(model_data) * (len(grouped["server_player"].unique()) + 8) * 8)
-    estimated_grouped_design_bytes = int(len(grouped) * (len(grouped["server_player"].unique()) + 8) * 8)
-    if estimated_grouped_design_bytes > 128 * 1024 * 1024:
-        return ({"model_status": "not_available", "reason": "La matriz de diseno agrupada supera el limite de memoria de 128 MiB; no se estiman inferencias no fiables.", "formula": formula, "reference_direction": REFERENCE_DIRECTION, "server_reference": server_reference, "estimator": "statsmodels GLM Binomial grouped", "standard_error_method": STANDARD_ERROR_METHOD, "n_observations": int(len(analytic)), "model_rows": int(len(grouped)), "estimated_dense_design_bytes": estimated_dense_bytes, "estimated_grouped_design_bytes": estimated_grouped_design_bytes}, pd.DataFrame(columns=COEFFICIENT_COLUMNS))
     try:
-        import patsy
-        import statsmodels.api as sm
-        design = patsy.dmatrix(formula.split(" ~ ", 1)[1], grouped, return_type="dataframe")
-        fitted = sm.GLM(grouped[["successes", "failures"]].astype(float).to_numpy(), design.astype(float).to_numpy(), family=sm.families.Binomial()).fit(
-            disp=False,
-            cov_type="cluster",
-            cov_kwds={"groups": grouped["match_id"]},
+        outcome = model_data["server_won_point"].astype(int).to_numpy()
+        first_fit = fit_mle(design, outcome, max_iterations=INITIAL_MAX_ITERATIONS)
+        second_fit = fit_mle(
+            design,
+            outcome,
+            max_iterations=CONTINUATION_MAX_ITERATIONS,
+            initial_coefficients=first_fit["beta"],
         )
+        fit = second_fit
+        optimization_attempts = [
+            _attempt_summary(1, first_fit["diagnostics"]),
+            _attempt_summary(2, second_fit["diagnostics"]),
+        ]
+        total_iterations = sum(
+            attempt["iterations"] for attempt in optimization_attempts
+            if attempt["iterations"] is not None
+        )
+        if total_iterations > INITIAL_MAX_ITERATIONS + CONTINUATION_MAX_ITERATIONS:
+            raise ValueError("Se supero el presupuesto total de iteraciones.")
+        if not fit["publishable"]:
+            return ({"model_status":"not_available","reason":"sparse_fit_not_publishable","fit_diagnostics":fit["diagnostics"],"optimization_attempts":optimization_attempts,"total_iterations":total_iterations,"cluster_covariance_status":"not_calculated_after_rejection","wald_status":"not_calculated_after_rejection","inference_status":"not_calculated_after_rejection","formula":formula,"reference_direction":REFERENCE_DIRECTION,"server_reference":server_reference,"estimator":"sparse unpenalized logistic MLE","standard_error_method":STANDARD_ERROR_METHOD,"n_observations":expected_rows,"sparse_shape":list(design.shape),"sparse_nnz":int(design.nnz),"sparse_bytes":csr_bytes,"hessian_bytes":hessian_bytes,"estimated_peak_bytes":peak_bytes,"cluster_count":int(model_data["match_id"].nunique())}, pd.DataFrame(columns=COEFFICIENT_COLUMNS))
+        robust = cluster_covariance(design, outcome, fit["beta"], model_data["match_id"].to_numpy())
+        details = inference(fit["beta"], robust)
+        rows = [_coefficient_row(metadata, fit["beta"][metadata["column_index"]], details["std_error"][metadata["column_index"]], details["statistic"][metadata["column_index"]], details["p_value"][metadata["column_index"]], details["ci_low"][metadata["column_index"]], details["ci_high"][metadata["column_index"]]) for metadata in term_mapping.metadata]
+        coefficients = pd.DataFrame(rows, columns=COEFFICIENT_COLUMNS)
+        global_test = wald_test(fit["beta"], robust, (term_mapping["direction[body]"], term_mapping["direction[T]"]))
+        return ({"model_status":"available","formula":formula,"reference_direction":REFERENCE_DIRECTION,"server_reference":server_reference,"estimator":"sparse unpenalized logistic MLE","standard_error_method":STANDARD_ERROR_METHOD,"n_observations":expected_rows,"iterations":fit["iterations"],"total_iterations":total_iterations,"optimization_attempts":optimization_attempts,"gradient_norm":fit["gradient_norm"],"log_likelihood":fit["log_likelihood"],"sparse_shape":list(design.shape),"sparse_nnz":int(design.nnz),"sparse_bytes":csr_bytes,"hessian_bytes":hessian_bytes,"estimated_peak_bytes":peak_bytes,"cluster_count":int(model_data["match_id"].nunique()),"global_direction_test":{"status":"available",**global_test}}, coefficients)
     except Exception as exc:
-        return (
-            {
-                "model_status": "not_available",
-                "reason": f"El ajuste no pudo estimarse de forma fiable: {type(exc).__name__}: {exc}",
-                "formula": formula,
-                "reference_direction": REFERENCE_DIRECTION,
-                "estimator": "statsmodels Logit",
-                "standard_error_method": STANDARD_ERROR_METHOD,
-            },
-            pd.DataFrame(columns=COEFFICIENT_COLUMNS),
-        )
-    conf = fitted.conf_int(alpha=0.05)
-    rows = [
-        _coefficient_row(
-            term,
-            fitted.params[term],
-            fitted.bse[term],
-            fitted.tvalues[term],
-            fitted.pvalues[term],
-            conf.loc[term, 0],
-            conf.loc[term, 1],
-        )
-        for term in fitted.params.index
-    ]
-    coefficients = pd.DataFrame(rows, columns=COEFFICIENT_COLUMNS)
-    coefficients["_direction_order"] = coefficients["level"].map({"body": 0, "T": 1})
-    coefficients["_variable_order"] = coefficients["variable"].map(
-        {"direction": 0, "surface": 1, "derived_period": 2, "server_player": 3, "other": 4}
-    )
-    coefficients = coefficients.sort_values(
-        ["_variable_order", "_direction_order", "term"],
-        na_position="last",
-    ).drop(columns=["_variable_order", "_direction_order"]).reset_index(drop=True)
-    numeric_coefficients = coefficients.select_dtypes(include=[np.number])
-    if not np.isfinite(numeric_coefficients.to_numpy(dtype=float)).all():
-        return (
-            {
-                "model_status": "not_available",
-                "reason": "El ajuste produjo coeficientes, intervalos o errores no finitos; no se publican resultados no fiables.",
-                "formula": MODEL_FORMULA,
-                "reference_direction": REFERENCE_DIRECTION,
-                "estimator": "statsmodels Logit",
-                "standard_error_method": STANDARD_ERROR_METHOD,
-            },
-            pd.DataFrame(columns=COEFFICIENT_COLUMNS),
-        )
-    global_test = _direction_global_test(fitted)
-    return (
-        {
-            "model_status": "available",
-            "formula": formula,
-            "reference_direction": REFERENCE_DIRECTION,
-            "estimator": "statsmodels Logit",
-            "standard_error_method": STANDARD_ERROR_METHOD,
-            "n_observations": int(len(analytic)),
-            "model_rows": int(len(grouped)),
-            "estimated_dense_design_bytes": estimated_dense_bytes,
-            "estimated_grouped_design_bytes": estimated_grouped_design_bytes,
-            "server_reference": server_reference,
-            "log_likelihood": float(fitted.llf),
-            "aic": float(fitted.aic),
-            "bic": float(fitted.bic),
-            "global_direction_test": global_test,
-        },
-        coefficients,
-    )
-
-
-def _direction_global_test(fitted: Any) -> dict[str, Any]:
-    terms = list(fitted.params.index)
-    direction_terms = [
-        term for term in terms
-        if "C(direction, Treatment(reference=\"wide\"))" in term
-    ]
-    if len(direction_terms) != 2:
-        return {
-            "status": "not_available",
-            "reason": "No se encontraron exactamente los terminos body y T frente a wide.",
-        }
-    matrix = np.zeros((2, len(terms)))
-    for row, term in enumerate(direction_terms):
-        matrix[row, terms.index(term)] = 1.0
-    try:
-        test = fitted.wald_test(matrix, scalar=True)
-    except Exception as exc:
-        return {
-            "status": "not_available",
-            "reason": f"No se pudo calcular el contraste global: {type(exc).__name__}: {exc}",
-        }
-    return {
-        "status": "available",
-        "hypothesis": "body_vs_wide = 0 and T_vs_wide = 0",
-        "statistic": float(test.statistic),
-        "df": int(test.df_denom) if hasattr(test, "df_denom") else len(direction_terms),
-        "p_value": float(test.pvalue),
-    }
+        return ({"model_status":"not_available","reason":f"sparse_fit_failed: {type(exc).__name__}: {exc}","formula":formula,"reference_direction":REFERENCE_DIRECTION,"server_reference":server_reference,"estimator":"sparse unpenalized logistic MLE","standard_error_method":STANDARD_ERROR_METHOD,"n_observations":expected_rows,"sparse_shape":list(design.shape),"sparse_nnz":int(design.nnz),"sparse_bytes":csr_bytes,"hessian_bytes":hessian_bytes,"estimated_peak_bytes":peak_bytes,"cluster_count":int(model_data["match_id"].nunique())}, pd.DataFrame(columns=COEFFICIENT_COLUMNS))
 
 
 def build_summary(
@@ -280,7 +196,9 @@ def build_summary(
         ),
         "analytical_points": int(len(analytic)),
         "matches": int(analytic["match_id"].nunique()),
+        "clusters": int(analytic["match_id"].nunique()),
         "servers": int(analytic["server_player"].nunique()),
+        "server_wins": int(analytic["server_won_point"].sum()),
         "excluded_direction_zero": int(
             baseline_summary["population"]["audit"]["excluded_direction_0"]
         ),
@@ -333,8 +251,16 @@ def build_summary(
             "Los errores estandar se agruparan por match_id solo cuando el modelo este disponible.",
         ],
     }
-    for metric in ("n_observations", "planned_model_rows", "planned_model_columns", "bytes_per_dense_element", "estimated_dense_design_bytes", "memory_limit_bytes", "model_rows", "estimated_grouped_design_bytes", "pseudo_r_squared", "log_likelihood", "aic", "bic"):
+    for metric in ("n_observations", "planned_model_rows", "planned_model_columns", "bytes_per_dense_element", "estimated_dense_design_bytes", "memory_limit_bytes", "log_likelihood"):
         if metric in adjusted and adjusted[metric] is not None:
+            summary[metric] = adjusted[metric]
+    if "fit_diagnostics" in adjusted:
+        summary["fit_diagnostics"] = adjusted["fit_diagnostics"]
+    for metric in (
+        "optimization_attempts", "total_iterations", "cluster_covariance_status",
+        "wald_status", "inference_status",
+    ):
+        if metric in adjusted:
             summary[metric] = adjusted[metric]
     summary["reconciliations"] = validate_reconciliations(
         baseline_summary,
@@ -379,9 +305,40 @@ def validate_reconciliations(
     else:
         if len(coefficients) != 0:
             raise ValueError("No debe haber coeficientes si el modelo no esta disponible.")
+        if adjusted.get("reason") == "sparse_fit_not_publishable":
+            diagnostics = adjusted.get("fit_diagnostics")
+            required_diagnostics = {
+                "reason_codes", "reason", "converged", "optimizer_success", "optimizer_status",
+                "optimizer_message", "iterations", "objective_value", "log_likelihood",
+                "gradient_norm", "max_abs_coefficient", "minimum_probability",
+                "maximum_probability", "saturated_probability_count", "hessian_status",
+                "covariance_status", "finite_coefficients", "finite_probabilities", "publishable",
+                "initial_point", "used_warm_start", "optimizer", "tolerance", "max_iterations",
+            }
+            if not isinstance(diagnostics, dict) or not required_diagnostics.issubset(diagnostics):
+                raise ValueError("fit_diagnostics incompleto.")
+            if diagnostics["converged"] != diagnostics["optimizer_success"] or diagnostics["publishable"]:
+                raise ValueError("fit_diagnostics no reconcilia.")
+            attempts = adjusted.get("optimization_attempts")
+            if not isinstance(attempts, list) or len(attempts) != 2:
+                raise ValueError("optimization_attempts incompleto.")
+            if attempts[0]["initial_point"] != "zeros" or attempts[1]["initial_point"] != "previous_solution":
+                raise ValueError("optimization_attempts no conserva el warm start.")
+            if attempts[0]["max_iterations"] != INITIAL_MAX_ITERATIONS or attempts[1]["max_iterations"] != CONTINUATION_MAX_ITERATIONS:
+                raise ValueError("optimization_attempts no conserva el presupuesto.")
+            if attempts[0]["optimizer"] != attempts[1]["optimizer"] or attempts[0]["tolerance"] != attempts[1]["tolerance"]:
+                raise ValueError("optimization_attempts no conserva el contrato del optimizador.")
+            if adjusted.get("total_iterations", -1) > INITIAL_MAX_ITERATIONS + CONTINUATION_MAX_ITERATIONS:
+                raise ValueError("optimization_attempts supera el presupuesto total.")
+            if adjusted.get("cluster_covariance_status") != "not_calculated_after_rejection" or adjusted.get("wald_status") != "not_calculated_after_rejection" or adjusted.get("inference_status") != "not_calculated_after_rejection":
+                raise ValueError("El rechazo no conserva el estado de inferencia.")
     if summary is not None:
         if summary["analytical_points"] != len(analytic):
             raise ValueError("summary analytical_points no reconcilia.")
+        if summary["matches"] != analytic["match_id"].nunique() or summary["clusters"] != analytic["match_id"].nunique():
+            raise ValueError("summary matches/clusters no reconcilia.")
+        if summary["servers"] != analytic["server_player"].nunique() or summary["server_wins"] != int(analytic["server_won_point"].sum()):
+            raise ValueError("summary servers/server_wins no reconcilia.")
         if summary["reference_direction"] != REFERENCE_DIRECTION:
             raise ValueError("summary reference_direction no reconcilia.")
         if summary["model_formula"] != adjusted["formula"]:
@@ -395,6 +352,10 @@ def validate_reconciliations(
         }
         if summary["global_direction_test"] != expected_global_test:
             raise ValueError("summary global_direction_test no reconcilia.")
+        if adjusted.get("fit_diagnostics") is not None and summary.get("fit_diagnostics") != adjusted["fit_diagnostics"]:
+            raise ValueError("summary fit_diagnostics no reconcilia.")
+        if adjusted.get("optimization_attempts") is not None and summary.get("optimization_attempts") != adjusted["optimization_attempts"]:
+            raise ValueError("summary optimization_attempts no reconcilia.")
     return {
         "population_matches_baseline": True,
         "binary_outcome": True,

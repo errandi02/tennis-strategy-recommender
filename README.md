@@ -79,10 +79,16 @@ length, resto, golpes, train/test split ni features historicas.
 
 ### Modelo ajustado de direccion del segundo servicio
 
-La especificacion asociativa prevista usa `wide`, `Hard`, `to_2009` y un
-servidor de referencia determinista. No se ajusta en la implementacion actual:
-la estimacion preventiva de memoria excede el limite seguro antes de construir
-la matriz densa.
+La especificacion asociativa usa `wide`, `Hard`, `to_2009` y un servidor de
+referencia determinista. La limitacion de memoria del diseno denso se resolvio
+con CSR y el nucleo disperso se valido sinteticamente frente a `statsmodels`.
+El ajuste real realizo dos intentos: el segundo reutilizo la solucion del
+primero mediante *warm start*. El resultado permanece `not_available` por no
+convergencia y una norma de gradiente superior a la tolerancia; el segundo
+intento termino con perdida de precision. Por ello no se publican OR, IC,
+p-values ni contraste Wald. Esto no implica ausencia de asociacion: esta
+especificacion con 1.002 efectos fijos de servidor no proporciona inferencia
+suficientemente fiable con el metodo actual y no genera recomendacion tactica.
 
 ```powershell
 python -m src.analysis.second_serve_direction_adjusted
@@ -94,8 +100,7 @@ La especificacion deja previstos errores estandar robustos agrupados por
 - `reports/second_serve_direction_adjusted_summary.json`
 - `reports/tables/second_serve_direction_adjusted_coefficients.csv`
 
-No hay OR, IC ni p-values publicados. Una futura alternativa requeriria diseno
-disperso o logistica condicional; no esta implementada. El analisis no es causal
+No hay OR, IC ni p-values publicados. El analisis no es causal.
 ni produce recomendaciones tacticas.
 
 ## Analisis reproducible de cobertura

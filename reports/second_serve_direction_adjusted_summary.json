@@ -2,7 +2,6 @@
   "analysis_name": "second_serve_direction_adjusted",
   "analysis_version": 1,
   "analytical_points": 481190,
-  "bytes_per_dense_element": 8,
   "categorical_inputs": {
     "derived_period": {
       "categories": [
@@ -34,6 +33,8 @@
       "reference": "Hard"
     }
   },
+  "cluster_covariance_status": "not_calculated_after_rejection",
+  "clusters": 7524,
   "coefficients_contract": {
     "coefficient_rows": 0,
     "confidence_interval": "95% odds-ratio interval",
@@ -56,16 +57,44 @@
     ],
     "odds_ratio": "exp(coefficient)"
   },
-  "estimated_dense_design_bytes": 3880316160,
-  "estimator": "GLM binomial (planned, not fitted)",
+  "estimator": "sparse unpenalized logistic MLE",
   "excluded_direction_zero": 148,
   "excluded_without_recognized_direction": 170,
+  "fit_diagnostics": {
+    "converged": false,
+    "covariance_status": "conventional_valid",
+    "finite_coefficients": true,
+    "finite_probabilities": true,
+    "gradient_norm": 9.619421578285229e-05,
+    "hessian_status": "invertible",
+    "initial_point": "previous_solution",
+    "iterations": 388,
+    "log_likelihood": -331950.2967334271,
+    "max_abs_coefficient": 23.766345738022956,
+    "max_iterations": 800,
+    "maximum_probability": 0.999999999951958,
+    "minimum_probability": 0.0929716071456193,
+    "objective_value": 331950.2967334271,
+    "optimizer": "BFGS",
+    "optimizer_message": "Desired error not necessarily achieved due to precision loss.",
+    "optimizer_status": 2,
+    "optimizer_success": false,
+    "publishable": false,
+    "reason": "optimizer_not_converged",
+    "reason_codes": [
+      "optimizer_not_converged",
+      "gradient_above_tolerance"
+    ],
+    "saturated_probability_count": 0,
+    "tolerance": 1e-08,
+    "used_warm_start": true
+  },
   "global_direction_test": {
-    "reason": "estimated_dense_design_exceeds_memory_limit",
+    "reason": "sparse_fit_not_publishable",
     "status": "not_available"
   },
+  "inference_status": "not_calculated_after_rejection",
   "matches": 7524,
-  "memory_limit_bytes": 536870912,
   "methodological_limits": [
     "Analisis asociativo, no causal.",
     "No produce recomendaciones tacticas.",
@@ -75,8 +104,68 @@
   "model_formula": "server_won_point ~ C(direction, Treatment(reference=\"wide\")) + C(surface, Treatment(reference=\"Hard\")) + C(derived_period, Treatment(reference=\"to_2009\")) + C(server_player, Treatment(reference=\"Aaron Krickstein\"))",
   "model_status": "not_available",
   "n_observations": 481190,
-  "planned_model_columns": 1008,
-  "planned_model_rows": 481190,
+  "optimization_attempts": [
+    {
+      "attempt": 1,
+      "converged": false,
+      "covariance_status": "conventional_valid",
+      "finite_coefficients": true,
+      "finite_probabilities": true,
+      "gradient_norm": 1.1694507562212666,
+      "hessian_status": "invertible",
+      "initial_point": "zeros",
+      "iterations": 200,
+      "log_likelihood": -331950.31705828226,
+      "max_abs_coefficient": 6.384024349844244,
+      "max_iterations": 200,
+      "maximum_probability": 0.998314247065851,
+      "minimum_probability": 0.09331498281538245,
+      "objective_value": 331950.31705828226,
+      "optimizer": "BFGS",
+      "optimizer_message": "Maximum number of iterations has been exceeded.",
+      "optimizer_status": 1,
+      "optimizer_success": false,
+      "publishable": false,
+      "reason": "optimizer_not_converged",
+      "reason_codes": [
+        "optimizer_not_converged",
+        "gradient_above_tolerance"
+      ],
+      "saturated_probability_count": 0,
+      "tolerance": 1e-08,
+      "used_warm_start": false
+    },
+    {
+      "attempt": 2,
+      "converged": false,
+      "covariance_status": "conventional_valid",
+      "finite_coefficients": true,
+      "finite_probabilities": true,
+      "gradient_norm": 9.619421578285229e-05,
+      "hessian_status": "invertible",
+      "initial_point": "previous_solution",
+      "iterations": 388,
+      "log_likelihood": -331950.2967334271,
+      "max_abs_coefficient": 23.766345738022956,
+      "max_iterations": 800,
+      "maximum_probability": 0.999999999951958,
+      "minimum_probability": 0.0929716071456193,
+      "objective_value": 331950.2967334271,
+      "optimizer": "BFGS",
+      "optimizer_message": "Desired error not necessarily achieved due to precision loss.",
+      "optimizer_status": 2,
+      "optimizer_success": false,
+      "publishable": false,
+      "reason": "optimizer_not_converged",
+      "reason_codes": [
+        "optimizer_not_converged",
+        "gradient_above_tolerance"
+      ],
+      "saturated_probability_count": 0,
+      "tolerance": 1e-08,
+      "used_warm_start": true
+    }
+  ],
   "population_by_direction": {
     "T": 138592,
     "body": 165841,
@@ -90,9 +179,12 @@
     "summary_contract_reconciled": true
   },
   "reference_direction": "wide",
+  "server_wins": 245683,
   "servers": 1002,
   "source": "data/processed/points_enriched.parquet",
   "source_rows": 1280408,
   "standard_error_method": "cluster_robust_by_match_id",
-  "substantive_second_serve_points": 481508
+  "substantive_second_serve_points": 481508,
+  "total_iterations": 588,
+  "wald_status": "not_calculated_after_rejection"
 }

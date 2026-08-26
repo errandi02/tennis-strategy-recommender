@@ -4,12 +4,16 @@ import importlib.util
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 from src.analysis.second_serve_direction_adjusted import (
     COEFFICIENT_COLUMNS,
     MODEL_FORMULA,
     POINTS_FILE,
+    SUMMARY_PATH,
+    COEFFICIENTS_PATH,
     REFERENCE_DIRECTION,
+    _coefficient_row,
     SOURCE_COLUMNS,
     analyze_second_serve_direction_adjusted,
     validate_reconciliations,
@@ -93,10 +97,29 @@ def test_memory_guard_returns_complete_not_available_contract(monkeypatch):
     monkeypatch.setattr("src.analysis.second_serve_direction_adjusted.MEMORY_LIMIT_BYTES", 1)
     summary, coefficients, _ = analyze_second_serve_direction_adjusted(fittable_synthetic_points())
     assert summary["model_status"] == "not_available"
-    assert summary["global_direction_test"]["reason"] == "estimated_dense_design_exceeds_memory_limit"
+    assert summary["global_direction_test"]["reason"] == "estimated_sparse_peak_exceeds_memory_limit"
     assert summary["planned_model_rows"] == 162
     assert summary["estimated_dense_design_bytes"] > summary["memory_limit_bytes"]
     assert coefficients.empty
+
+
+def test_csr_term_metadata_identifies_direction_levels_without_patsy_syntax():
+    body = _coefficient_row(
+        {"term": "direction[body]", "variable": "direction", "level": "body", "reference_level": "wide", "column_index": 1},
+        0.1, 0.2, 0.5, 0.6, -0.3, 0.5,
+    )
+    tee = _coefficient_row(
+        {"term": "direction[T]", "variable": "direction", "level": "T", "reference_level": "wide", "column_index": 2},
+        0.2, 0.2, 1.0, 0.3, -0.2, 0.6,
+    )
+    assert [(row["variable"], row["level"], row["reference_level"]) for row in (body, tee)] == [
+        ("direction", "body", "wide"), ("direction", "T", "wide"),
+    ]
+    with pytest.raises(ValueError, match="Variable de termino desconocida"):
+        _coefficient_row(
+            {"term": "direction[T]", "variable": "unknown", "level": "T", "reference_level": "wide", "column_index": 2},
+            0.2, 0.2, 1.0, 0.3, -0.2, 0.6,
+        )
 
 
 def test_summary_contains_no_nan_or_infinity_and_no_recommendation_language():
@@ -104,6 +127,47 @@ def test_summary_contains_no_nan_or_infinity_and_no_recommendation_language():
     serialized = json.dumps(summary, allow_nan=False)
     forbidden = ["deberia sacar", "recomendamos", "estrategia optima"]
     assert not any(text in serialized.lower() for text in forbidden)
+
+
+def test_non_publishable_fit_stops_after_exactly_two_attempts(monkeypatch):
+    calls = []
+    builder_calls = []
+    from src.analysis.sparse_logistic import build_design as sparse_build_design
+    def capture_builder(*args, **kwargs):
+        design, mapping = sparse_build_design(*args, **kwargs)
+        assert sparse.isspmatrix_csr(design)
+        builder_calls.append((design.shape, mapping))
+        return design, mapping
+    def fake_fit(design, outcome, **kwargs):
+        calls.append(kwargs)
+        diagnostics = {
+            "reason_codes": ["optimizer_not_converged", "gradient_above_tolerance"],
+            "reason": "optimizer_not_converged", "converged": False,
+            "optimizer_success": False, "optimizer": "BFGS", "tolerance": 1e-8,
+            "max_iterations": kwargs["max_iterations"],
+            "initial_point": "previous_solution" if "initial_coefficients" in kwargs else "zeros",
+            "used_warm_start": "initial_coefficients" in kwargs,
+            "optimizer_status": 1, "optimizer_message": "not converged", "iterations": 1,
+            "objective_value": 2.0, "log_likelihood": -2.0, "gradient_norm": 2.0,
+            "max_abs_coefficient": 1.0, "minimum_probability": 0.2,
+            "maximum_probability": 0.8, "saturated_probability_count": 0,
+            "hessian_status": "invertible", "covariance_status": "conventional_valid",
+            "finite_coefficients": True, "finite_probabilities": True, "publishable": False,
+        }
+        return {"beta": np.zeros(design.shape[1]), "publishable": False, "diagnostics": diagnostics}
+    monkeypatch.setattr("src.analysis.second_serve_direction_adjusted.fit_mle", fake_fit)
+    monkeypatch.setattr("src.analysis.second_serve_direction_adjusted.build_design", capture_builder)
+    monkeypatch.setattr("src.analysis.second_serve_direction_adjusted.cluster_covariance", lambda *args: (_ for _ in ()).throw(AssertionError("No debe calcularse covarianza cluster")))
+    summary, coefficients, _ = analyze_second_serve_direction_adjusted(fittable_synthetic_points())
+    assert [call["max_iterations"] for call in calls] == [200, 800]
+    assert len(builder_calls) == 1
+    assert "initial_coefficients" not in calls[0] and "initial_coefficients" in calls[1]
+    assert summary["model_status"] == "not_available"
+    assert summary["fit_diagnostics"]["reason_codes"] == ["optimizer_not_converged", "gradient_above_tolerance"]
+    assert summary["total_iterations"] == 2
+    assert summary["cluster_covariance_status"] == "not_calculated_after_rejection"
+    assert summary["wald_status"] == "not_calculated_after_rejection"
+    assert coefficients.empty
 
 
 def test_reconciliation_rejects_population_formula_reference_and_global_test_changes():
@@ -194,14 +258,18 @@ def test_artifact_writing_is_deterministic_and_index_free(tmp_path):
 
 
 @pytest.mark.integration
-def test_real_adjusted_analysis_contract_and_population():
-    if not POINTS_FILE.exists() or not importlib.util.find_spec("pyarrow"):
-        pytest.skip("No estan disponibles points_enriched.parquet y un motor Parquet local.")
+def test_real_adjusted_artifacts_contract_and_population(tmp_path):
+    if not POINTS_FILE.exists() or not importlib.util.find_spec("pyarrow") or not SUMMARY_PATH.exists() or not COEFFICIENTS_PATH.exists():
+        pytest.skip("No estan disponibles los Parquet y artefactos locales necesarios.")
     points = pd.read_parquet(POINTS_FILE, columns=SOURCE_COLUMNS)
-    summary, coefficients, analytic = analyze_second_serve_direction_adjusted(points)
+    baseline_summary, _, _, analytic = analyze_second_serve_direction_baseline(points)
+    summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    coefficients = pd.read_csv(COEFFICIENTS_PATH)
     assert summary["analytical_points"] == 481_190
     assert summary["matches"] == 7_524
+    assert summary["clusters"] == 7_524
     assert summary["servers"] == 1_002
+    assert summary["server_wins"] == 245_683
     assert summary["excluded_direction_zero"] == 148
     assert summary["excluded_without_recognized_direction"] == 170
     assert summary["population_by_direction"] == {
@@ -212,9 +280,21 @@ def test_real_adjusted_analysis_contract_and_population():
     assert summary["reference_direction"] == "wide"
     assert summary["model_formula"] == MODEL_FORMULA.format(server_reference="Aaron Krickstein")
     assert summary["model_status"] == "not_available"
-    assert summary["global_direction_test"]["reason"] == "estimated_dense_design_exceeds_memory_limit"
-    assert summary["estimated_dense_design_bytes"] == 3_880_316_160
-    assert summary["memory_limit_bytes"] == 536_870_912
+    assert summary["fit_diagnostics"]["reason_codes"] == ["optimizer_not_converged", "gradient_above_tolerance"]
+    assert summary["cluster_covariance_status"] == "not_calculated_after_rejection"
+    assert summary["wald_status"] == "not_calculated_after_rejection"
+    attempts = summary["optimization_attempts"]
+    assert len(attempts) == 2 and attempts[0]["initial_point"] == "zeros" and attempts[1]["initial_point"] == "previous_solution"
+    assert attempts[0]["iterations"] == 200 and attempts[1]["iterations"] == 388
+    assert summary["total_iterations"] == 588
+    assert attempts[1]["log_likelihood"] > attempts[0]["log_likelihood"]
+    assert attempts[1]["gradient_norm"] < attempts[0]["gradient_norm"]
     assert len(coefficients) == 0
     assert len(analytic) == 481_190
     assert int(analytic["server_won_point"].sum()) == 245_683
+    assert "beta" not in json.dumps(summary, allow_nan=False).lower()
+    assert baseline_summary["population"]["analytic_points"] == summary["analytical_points"]
+    write_artifacts(summary, coefficients, tmp_path / "first", tmp_path / "first" / "tables")
+    write_artifacts(summary, coefficients, tmp_path / "second", tmp_path / "second" / "tables")
+    assert (tmp_path / "first" / SUMMARY_PATH.name).read_bytes() == (tmp_path / "second" / SUMMARY_PATH.name).read_bytes()
+    assert (tmp_path / "first" / "tables" / COEFFICIENTS_PATH.name).read_bytes() == (tmp_path / "second" / "tables" / COEFFICIENTS_PATH.name).read_bytes()
