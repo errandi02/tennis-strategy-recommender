@@ -1,0 +1,114 @@
+{
+  "aic": 666694.3910298413,
+  "analysis_name": "second_serve_direction_pooled_adjusted",
+  "analysis_version": 1,
+  "categorical_references": {
+    "derived_period": "to_2009",
+    "direction": "wide",
+    "surface": "Hard"
+  },
+  "cluster_variable": "match_id",
+  "clusters": 7524,
+  "coefficients_contract": {
+    "coefficient_rows": 7,
+    "confidence_interval": "95% odds-ratio interval",
+    "csv_columns": [
+      "term",
+      "variable",
+      "level",
+      "reference_level",
+      "coefficient",
+      "odds_ratio",
+      "std_error",
+      "statistic",
+      "p_value",
+      "ci_low",
+      "ci_high"
+    ],
+    "odds_ratio": "exp(coefficient)"
+  },
+  "convergence": true,
+  "design_columns": [
+    "Intercept",
+    "direction[body]",
+    "direction[T]",
+    "surface[Clay]",
+    "surface[Grass]",
+    "derived_period[2010s]",
+    "derived_period[2020s]"
+  ],
+  "deviance": 666680.3910298413,
+  "estimator": "statsmodels.GLM Binomial",
+  "exclusions": {
+    "direction_0": 148,
+    "without_recognized_direction": 170
+  },
+  "formula": "server_won_point ~ direction + surface + derived_period",
+  "global_direction_test": {
+    "df": 2,
+    "hypothesis": "body_vs_wide = 0 and T_vs_wide = 0",
+    "p_value": 1.062263443325782e-12,
+    "statistic": 55.141238320952326,
+    "status": "available"
+  },
+  "log_likelihood": -333340.19551492063,
+  "methodological_limits": [
+    "Asociacion poblacional ajustada solo por superficie y periodo.",
+    "Puede existir confusion residual por diferencias entre servidores.",
+    "Los errores estandar se agrupan por match_id; la dependencia entre partidos de un mismo servidor no se modela explicitamente.",
+    "Analisis no causal y sin recomendacion tactica."
+  ],
+  "model_diagnostics": {
+    "cluster_finite_sample_correction": true,
+    "clusters": 7524,
+    "converged": true,
+    "cov_type": "cluster",
+    "covariance_finite": true,
+    "covariance_nonnegative_diagonal": true,
+    "covariance_symmetric": true,
+    "design_columns": 7,
+    "design_rank": 7,
+    "max_abs_coefficient": 0.07477050981576311,
+    "maximum_probability": 0.5367272200992494,
+    "minimum_probability": 0.49495116905183817,
+    "parameters_finite": true,
+    "probabilities_finite": true,
+    "publishable": true,
+    "reason_codes": [],
+    "saturated_probability_count": 0
+  },
+  "model_status": "available",
+  "n_observations": 481190,
+  "null_deviance": 666855.7698952367,
+  "population": {
+    "analytical_points": 481190,
+    "by_direction": {
+      "T": {
+        "points": 138592,
+        "server_wins": 69944
+      },
+      "body": {
+        "points": 165841,
+        "server_wins": 84299
+      },
+      "wide": {
+        "points": 176757,
+        "server_wins": 91440
+      }
+    },
+    "matches": 7524,
+    "server_wins": 245683,
+    "servers": 1002
+  },
+  "pseudo_r_squared": 0.0002629936986572323,
+  "pseudo_r_squared_definition": "McFadden: 1 - log_likelihood / null_log_likelihood",
+  "reason_codes": [],
+  "reconciliations": {
+    "coefficients_contract_reconciled": true,
+    "population_reconciled": true,
+    "summary_contract_reconciled": true,
+    "wins_reconciled": true
+  },
+  "source": "data/processed/points_enriched.parquet",
+  "standard_error_method": "cluster_robust_by_match_id"
+}

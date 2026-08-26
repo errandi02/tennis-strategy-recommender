@@ -103,6 +103,29 @@ La especificacion deja previstos errores estandar robustos agrupados por
 No hay OR, IC ni p-values publicados. El analisis no es causal.
 ni produce recomendaciones tacticas.
 
+### Modelo pooled inferencial de direccion del segundo servicio
+
+El analisis pooled estima la asociacion poblacional de la direccion del segundo
+saque, ajustada por superficie y periodo:
+
+```text
+server_won_point ~ direction + surface + derived_period
+```
+
+Usa `wide`, `Hard` y `to_2009` como referencias y errores estandar robustos
+agrupados por `match_id`. Sus resultados son asociativos, no causales, no
+generan recomendaciones tacticas y pueden conservar confusion residual por
+diferencias entre servidores, que no se incluyen como efectos fijos.
+
+```powershell
+python -m src.analysis.second_serve_direction_pooled_adjusted
+```
+
+Artefactos versionables generados:
+
+- `reports/second_serve_direction_pooled_adjusted_summary.json`
+- `reports/tables/second_serve_direction_pooled_adjusted_coefficients.csv`
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
