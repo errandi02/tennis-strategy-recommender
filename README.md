@@ -126,6 +126,29 @@ Artefactos versionables generados:
 - `reports/second_serve_direction_pooled_adjusted_summary.json`
 - `reports/tables/second_serve_direction_pooled_adjusted_coefficients.csv`
 
+### Robustez y heterogeneidad del segundo servicio
+
+El análisis de heterogeneidad usa la misma población del modelo pooled y ajusta
+por separado interacciones preespecificadas de dirección con superficie y con
+periodo. Los márgenes estandarizados y contrastes `body`/`T` frente a `wide`
+usan covarianza robusta agrupada por partido y corrección Holm dentro de cada
+familia de seis contrastes. Es un análisis exploratorio de asociación, no una
+recomendación táctica ni una estimación causal. El ajuste se limita a las
+covariables preespecificadas y puede conservar confusión residual por servidor;
+la dependencia se agrupa por partido, no por servidor. Los Wald no significativos
+no demuestran homogeneidad, y el signo, la significación estadística y la
+relevancia práctica deben interpretarse por separado.
+
+```powershell
+python -m src.analysis.second_serve_direction_heterogeneity
+```
+
+Artefactos versionables generados:
+
+- `reports/second_serve_direction_heterogeneity_summary.json`
+- `reports/tables/second_serve_direction_heterogeneity_contrasts.csv`
+- `reports/tables/second_serve_direction_heterogeneity_margins.csv`
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y

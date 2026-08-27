@@ -1,0 +1,314 @@
+{
+  "analysis_name": "second_serve_direction_heterogeneity",
+  "contrasts_contract": {
+    "columns": [
+      "model",
+      "stratum_type",
+      "stratum",
+      "contrast",
+      "analytical_points",
+      "matches",
+      "difference",
+      "standard_error",
+      "ci_low",
+      "ci_high",
+      "z",
+      "p_value_raw",
+      "p_value_holm",
+      "holm_family"
+    ],
+    "delta_method": true,
+    "rows": 12,
+    "scale": "probability"
+  },
+  "exclusions": {
+    "direction_0": 148,
+    "without_recognized_direction": 170
+  },
+  "global_interaction_tests": {
+    "period": {
+      "df": 4,
+      "p_value": 0.2646417717866779,
+      "statistic": 5.228534666056835,
+      "status": "available",
+      "terms": [
+        "direction[body]:derived_period[2010s]",
+        "direction[body]:derived_period[2020s]",
+        "direction[T]:derived_period[2010s]",
+        "direction[T]:derived_period[2020s]"
+      ]
+    },
+    "surface": {
+      "df": 4,
+      "p_value": 0.4838368657818988,
+      "statistic": 3.4609754668421524,
+      "status": "available",
+      "terms": [
+        "direction[body]:surface[Clay]",
+        "direction[body]:surface[Grass]",
+        "direction[T]:surface[Clay]",
+        "direction[T]:surface[Grass]"
+      ]
+    }
+  },
+  "margins_contract": {
+    "columns": [
+      "model",
+      "stratum_type",
+      "stratum",
+      "direction",
+      "analytical_points",
+      "matches",
+      "adjusted_probability",
+      "standard_error",
+      "ci_low",
+      "ci_high"
+    ],
+    "rows": 18,
+    "standardization": "Distribucion observada de las demas covariables."
+  },
+  "methodological_limits": [
+    "Asociacion poblacional, no causal.",
+    "El ajuste se limita a direccion, superficie, periodo y sus interacciones preespecificadas.",
+    "Posible confusion residual por servidor.",
+    "Estratos definidos a priori; heterogeneidad exploratoria.",
+    "Correccion Holm dentro de cada familia de seis contrastes.",
+    "Dependencia agrupada por partido, no por servidor.",
+    "Un Wald no significativo no demuestra homogeneidad.",
+    "El signo, la significacion estadistica y la relevancia practica son dimensiones distintas.",
+    "No constituye recomendacion tactica personalizada."
+  ],
+  "model_contracts": {
+    "additive": {
+      "formula": "server_won_point ~ direction + surface + derived_period",
+      "references": {
+        "derived_period": "to_2009",
+        "direction": "wide",
+        "surface": "Hard"
+      }
+    },
+    "period_interaction": {
+      "formula": "server_won_point ~ direction * derived_period + surface",
+      "references": {
+        "derived_period": "to_2009",
+        "direction": "wide",
+        "surface": "Hard"
+      }
+    },
+    "surface_interaction": {
+      "formula": "server_won_point ~ direction * surface + derived_period",
+      "references": {
+        "derived_period": "to_2009",
+        "direction": "wide",
+        "surface": "Hard"
+      }
+    }
+  },
+  "model_statuses": {
+    "additive": {
+      "aic": 666694.3910298413,
+      "diagnostics": {
+        "cluster_finite_sample_correction": true,
+        "clusters": 7524,
+        "converged": true,
+        "cov_type": "cluster",
+        "covariance_finite": true,
+        "covariance_nonnegative_diagonal": true,
+        "covariance_symmetric": true,
+        "design_columns": 7,
+        "design_rank": 7,
+        "max_abs_coefficient": 0.07477050981576311,
+        "maximum_probability": 0.5367272200992494,
+        "minimum_probability": 0.49495116905183817,
+        "parameters_finite": true,
+        "probabilities_finite": true,
+        "publishable": true,
+        "reason_codes": [],
+        "saturated_probability_count": 0
+      },
+      "log_likelihood": -333340.19551492063,
+      "n_observations": 481190,
+      "reason_codes": [],
+      "status": "available"
+    },
+    "period_interaction": {
+      "aic": 666697.1411316292,
+      "diagnostics": {
+        "cluster_finite_sample_correction": true,
+        "clusters": 7524,
+        "converged": true,
+        "cov_type": "cluster",
+        "covariance_finite": true,
+        "covariance_nonnegative_diagonal": true,
+        "covariance_symmetric": true,
+        "design_columns": 11,
+        "design_rank": 11,
+        "max_abs_coefficient": 0.07473370539448088,
+        "maximum_probability": 0.5380162553205641,
+        "minimum_probability": 0.4951820788756938,
+        "parameters_finite": true,
+        "probabilities_finite": true,
+        "publishable": true,
+        "reason_codes": [],
+        "saturated_probability_count": 0
+      },
+      "log_likelihood": -333337.5705658146,
+      "n_observations": 481190,
+      "reason_codes": [],
+      "status": "available"
+    },
+    "surface_interaction": {
+      "aic": 666698.9326622849,
+      "diagnostics": {
+        "cluster_finite_sample_correction": true,
+        "clusters": 7524,
+        "converged": true,
+        "cov_type": "cluster",
+        "covariance_finite": true,
+        "covariance_nonnegative_diagonal": true,
+        "covariance_symmetric": true,
+        "design_columns": 11,
+        "design_rank": 11,
+        "max_abs_coefficient": 0.072653903803268,
+        "maximum_probability": 0.5362290868449092,
+        "minimum_probability": 0.4953524471416606,
+        "parameters_finite": true,
+        "probabilities_finite": true,
+        "publishable": true,
+        "reason_codes": [],
+        "saturated_probability_count": 0
+      },
+      "log_likelihood": -333338.46633114247,
+      "n_observations": 481190,
+      "reason_codes": [],
+      "status": "available"
+    }
+  },
+  "multiple_testing": {
+    "families": {
+      "period": 6,
+      "surface": 6
+    },
+    "method": "Holm"
+  },
+  "population": {
+    "analytical_points": 481190,
+    "by_direction": {
+      "T": {
+        "points": 138592,
+        "server_wins": 69944
+      },
+      "body": {
+        "points": 165841,
+        "server_wins": 84299
+      },
+      "wide": {
+        "points": 176757,
+        "server_wins": 91440
+      }
+    },
+    "clusters": 7524,
+    "matches": 7524,
+    "server_wins": 245683,
+    "servers": 1002
+  },
+  "publication_contract": "all_three_models_must_be_available",
+  "reconciliations": {
+    "clusters_reconciled": true,
+    "common_population": true,
+    "contrasts_valid": true,
+    "margins_valid": true,
+    "published_values_reconciled": true,
+    "summary_contract_reconciled": true
+  },
+  "source": "data/processed/points_enriched.parquet",
+  "stability_summary": {
+    "period": {
+      "contrasts": {
+        "T_minus_wide": {
+          "difference_max": -0.01218325595219194,
+          "difference_min": -0.013521572923688052,
+          "sign_changes_between_strata": false
+        },
+        "body_minus_wide": {
+          "difference_max": -0.004102979191806466,
+          "difference_min": -0.013403462214082396,
+          "sign_changes_between_strata": false
+        }
+      },
+      "coverage": [
+        {
+          "analytical_points": 133660,
+          "matches": 2232,
+          "stratum": "2010s"
+        },
+        {
+          "analytical_points": 201657,
+          "matches": 3336,
+          "stratum": "2020s"
+        },
+        {
+          "analytical_points": 145873,
+          "matches": 1956,
+          "stratum": "to_2009"
+        }
+      ],
+      "global_interaction_test": {
+        "df": 4,
+        "p_value": 0.2646417717866779,
+        "statistic": 5.228534666056835,
+        "status": "available",
+        "terms": [
+          "direction[body]:derived_period[2010s]",
+          "direction[body]:derived_period[2020s]",
+          "direction[T]:derived_period[2010s]",
+          "direction[T]:derived_period[2020s]"
+        ]
+      }
+    },
+    "surface": {
+      "contrasts": {
+        "T_minus_wide": {
+          "difference_max": -0.010109002097489106,
+          "difference_min": -0.014532446740084581,
+          "sign_changes_between_strata": false
+        },
+        "body_minus_wide": {
+          "difference_max": -0.006680048163448138,
+          "difference_min": -0.01259075254857761,
+          "sign_changes_between_strata": false
+        }
+      },
+      "coverage": [
+        {
+          "analytical_points": 115357,
+          "matches": 1872,
+          "stratum": "Clay"
+        },
+        {
+          "analytical_points": 61436,
+          "matches": 829,
+          "stratum": "Grass"
+        },
+        {
+          "analytical_points": 304397,
+          "matches": 4823,
+          "stratum": "Hard"
+        }
+      ],
+      "global_interaction_test": {
+        "df": 4,
+        "p_value": 0.4838368657818988,
+        "statistic": 3.4609754668421524,
+        "status": "available",
+        "terms": [
+          "direction[body]:surface[Clay]",
+          "direction[body]:surface[Grass]",
+          "direction[T]:surface[Clay]",
+          "direction[T]:surface[Grass]"
+        ]
+      }
+    }
+  },
+  "version": 1
+}
