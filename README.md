@@ -149,6 +149,33 @@ Artefactos versionables generados:
 - `reports/tables/second_serve_direction_heterogeneity_contrasts.csv`
 - `reports/tables/second_serve_direction_heterogeneity_margins.csv`
 
+### Perfiles historicos descriptivos sin fuga temporal
+
+El constructor genera en memoria 15.048 snapshots con unidad
+`target_match_id x target_player`: exactamente dos participantes por cada uno
+de los 7.524 partidos. Usa solo historia con fecha estrictamente anterior. Los
+partidos del mismo jugador en la misma fecha se consideran simultaneos, sin
+ordenarlos por hora, ronda, torneo o identificador. Resume por separado los
+conteos brutos del jugador objetivo al saque y del oponente al resto, tanto
+globales como en la superficie objetivo.
+
+```powershell
+python -m src.analysis.historical_profiles
+```
+
+Artefactos versionables generados:
+
+- `reports/historical_profiles_summary.json`
+- `reports/tables/historical_profiles_coverage.csv`
+
+Los snapshots completos de `target_match_id x target_player` no se publican
+como artefacto en esta fase. Los cortes de cobertura son exclusivamente
+descriptivos y no constituyen umbrales aprobados para features o modelos. No
+se aplican tasas, suavizado, fallback, ventanas historicas, head-to-head,
+modelos ni recomendaciones. La identidad textual exacta se considera valida
+solo para el Parquet procesado fijado. La eleccion de ventanas, suavizado,
+umbrales y validacion rolling-origin permanece pendiente para fases posteriores.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
