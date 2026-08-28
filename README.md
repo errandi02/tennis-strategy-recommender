@@ -202,6 +202,40 @@ cortes de cobertura son solo descriptivos: no filtran filas ni seleccionan un
 umbral. No se aplican smoothing, fallback, scoring, modelos o recomendaciones,
 y las comparaciones son asociaciones históricas, no efectos causales.
 
+### Protocolo de validacion cronologica
+
+El constructor lee exclusivamente `match_id`, `date`, `player_1`, `player_2` y
+`surface` del Parquet procesado y lo reduce inmediatamente a una fila por
+partido. Asigna fechas civiles completas a train (hasta 2019), validation
+(2020--2023) y test final sellado (2024--2026-05-21). Todos los partidos de una
+fecha se evalúan contra el estado anterior y solo después actualizan la historia;
+no se usa orden intradía. La validación principal usa cuatro folds rolling-origin
+expansivos para 2020--2023, con definición de features, política de evidencia,
+scoring y parámetros fijados antes de cada evaluación.
+
+La sensibilidad frozen mantiene features, baselines y parámetros fijados al
+2023-12-31 durante los mismos 1.531 partidos de test y no actualiza el estado con
+partidos del propio test. El test permanece sellado, registra cero ejecuciones de
+evaluación y no interviene en la selección de thresholds, ventanas, smoothing,
+fallback, scoring, hiperparámetros o definiciones de features; se reserva para un
+único uso final. La fuente termina el 2026-05-21, por lo que 2026 se marca como
+año parcial sin afirmar cobertura histórica exhaustiva para otros años.
+
+```powershell
+python -m src.analysis.chronological_validation
+```
+
+Artefactos agregados versionables:
+
+- `reports/chronological_validation_summary.json`
+- `reports/tables/chronological_validation_by_year.csv`
+- `reports/tables/chronological_validation_folds.csv`
+
+No se publica una tabla partido a partido. El cold start aqui documentado solo
+indica si existe algun partido en una fecha estrictamente anterior; no mide
+evidencia direccional suficiente y no selecciona thresholds, modelos ni
+recomendaciones.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y

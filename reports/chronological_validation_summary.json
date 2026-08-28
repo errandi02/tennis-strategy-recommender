@@ -1,0 +1,365 @@
+{
+  "analysis_name": "chronological_validation_protocol",
+  "analysis_version": "1.1.0",
+  "atomic_publication_contract": {
+    "all_payloads_validated_before_replace": true,
+    "physical_transaction_across_power_loss": false,
+    "rollback_on_caught_replace_failure": true
+  },
+  "cold_start_contract": {
+    "definition": "player has any charted match on a strictly earlier calendar date",
+    "does_not_exclude_matches": true,
+    "match_state_is_distinct_from_seen_at_fold_start": true,
+    "not_a_sufficient_evidence_measure": true,
+    "not_direction_specific": true,
+    "same_day_does_not_count_as_prior": true,
+    "states": [
+      "neither_prior",
+      "one_prior",
+      "both_prior"
+    ]
+  },
+  "date_contract": {
+    "accepted_string_format": "YYYY-MM-DD",
+    "ambiguous_string_parsing": false,
+    "calendar_day_normalized": true,
+    "first_date": "1960-05-29",
+    "intraday_ordering_used": false,
+    "last_date": "2026-05-21",
+    "same_date_is_indivisible": true
+  },
+  "folds_table_contract": {
+    "frozen_test_rows": 1,
+    "key": [
+      "protocol",
+      "fold_id"
+    ],
+    "only_aggregates_published": true,
+    "rolling_and_frozen_test_share_population": true,
+    "rolling_test_rows": 1,
+    "rows": 6,
+    "rows_must_not_be_summed_as_independent_populations": true,
+    "validation_rows": 4
+  },
+  "frozen_sensitivity_contract": {
+    "evaluation_end": "2026-05-21",
+    "evaluation_start": "2024-01-01",
+    "features_baselines_and_parameters_remain_fixed": true,
+    "freeze_date": "2023-12-31",
+    "performance_metrics_executed": false,
+    "same_test_population_as_principal": true,
+    "test_matches": 1531,
+    "test_matches_do_not_update_later_test_predictions": true
+  },
+  "identity_contract": {
+    "exact_nonempty_text": true,
+    "external_whitespace_allowed": false,
+    "fields": [
+      "match_id",
+      "player_1",
+      "player_2"
+    ],
+    "player_1_must_differ_from_player_2": true,
+    "player_identities_normalized": false
+  },
+  "match_table_contract": {
+    "metadata_validated_before_deduplication": true,
+    "only_aggregates_are_published": true,
+    "published_match_level_table": false,
+    "unit": "one_row_per_match_id"
+  },
+  "methodological_limits": [
+    "Cold start only records prior match presence; it does not measure direction-specific evidence.",
+    "The 2026 test segment is partial through 2026-05-21 and must remain frozen to this data release.",
+    "No threshold, smoothing, fallback, score, model or recommendation is selected here."
+  ],
+  "next_allowed_step": {
+    "allowed": [
+      "calculate combined evidence policies in train and validation",
+      "select candidates with validation folds 2020-2023"
+    ],
+    "scoring_models_or_test_evaluation_authorized": false,
+    "test_remains_sealed": true
+  },
+  "protected_test_contract": {
+    "descriptive_metadata_only": [
+      "dates",
+      "matches",
+      "players",
+      "surfaces",
+      "basic_cold_start"
+    ],
+    "excluded_from_selection": [
+      "thresholds",
+      "windows",
+      "smoothing",
+      "fallback",
+      "scoring",
+      "hyperparameters",
+      "feature_definitions"
+    ],
+    "performance_results_published": false,
+    "test_end": "2026-05-21",
+    "test_evaluation_runs": 0,
+    "test_matches": 1531,
+    "test_start": "2024-01-01",
+    "test_status": "sealed",
+    "test_used_for_method_selection": false,
+    "used_once_after_methodology_and_metrics_are_closed": true
+  },
+  "publication_fingerprint": "E889A679E08BB16FAF5AB01AA0D63A7623BE0825A0F945626A1D19301C8DFEAD",
+  "reconciliations": {
+    "annual_match_sum": 7524,
+    "cold_start_states_exhaustive": true,
+    "no_features_outcomes_models_or_recommendations": true,
+    "rolling_and_frozen_test_populations_match": true,
+    "single_split_per_calendar_date": true,
+    "source_rows": 1280408,
+    "split_match_sum": 7524,
+    "surface_totals_match": true,
+    "test_remains_sealed": true,
+    "unique_matches": 7524,
+    "unique_split_per_match": true,
+    "validation_fold_union_matches_validation": true
+  },
+  "rolling_folds": [
+    {
+      "both_players_prior_matches": 155,
+      "both_players_prior_rate": 0.9226190476190477,
+      "clay_matches": 24,
+      "evaluation_end": "2020-12-31",
+      "evaluation_first_observed_date": "2020-01-03",
+      "evaluation_last_observed_date": "2020-12-06",
+      "evaluation_matches": 168,
+      "evaluation_players": 113,
+      "evaluation_start": "2020-01-01",
+      "evidence_policy": "fixed_before_evaluation",
+      "feature_definition_policy": "fixed_before_evaluation",
+      "fold_id": "validation_2020",
+      "grass_matches": 0,
+      "hard_matches": 144,
+      "history_update_policy": "update_after_complete_date",
+      "is_final_test": false,
+      "neither_player_prior_matches": 2,
+      "one_player_prior_matches": 11,
+      "protocol": "rolling_origin",
+      "scoring_parameter_policy": "fixed_before_evaluation",
+      "seen_players_at_evaluation_start": 98,
+      "test_usage_policy": "method_selection_validation_only",
+      "train_cutoff": "2019-12-31",
+      "train_last_observed_date": "2019-11-24",
+      "train_matches": 4188,
+      "unseen_players_at_evaluation_start": 15
+    },
+    {
+      "both_players_prior_matches": 327,
+      "both_players_prior_rate": 0.8814016172506739,
+      "clay_matches": 94,
+      "evaluation_end": "2021-12-31",
+      "evaluation_first_observed_date": "2021-01-10",
+      "evaluation_last_observed_date": "2021-12-19",
+      "evaluation_matches": 371,
+      "evaluation_players": 166,
+      "evaluation_start": "2021-01-01",
+      "evidence_policy": "fixed_before_evaluation",
+      "feature_definition_policy": "fixed_before_evaluation",
+      "fold_id": "validation_2021",
+      "grass_matches": 28,
+      "hard_matches": 249,
+      "history_update_policy": "update_after_complete_date",
+      "is_final_test": false,
+      "neither_player_prior_matches": 7,
+      "one_player_prior_matches": 37,
+      "protocol": "rolling_origin",
+      "scoring_parameter_policy": "fixed_before_evaluation",
+      "seen_players_at_evaluation_start": 115,
+      "test_usage_policy": "method_selection_validation_only",
+      "train_cutoff": "2020-12-31",
+      "train_last_observed_date": "2020-12-06",
+      "train_matches": 4356,
+      "unseen_players_at_evaluation_start": 51
+    },
+    {
+      "both_players_prior_matches": 589,
+      "both_players_prior_rate": 0.9117647058823529,
+      "clay_matches": 177,
+      "evaluation_end": "2022-12-31",
+      "evaluation_first_observed_date": "2022-01-01",
+      "evaluation_last_observed_date": "2022-12-18",
+      "evaluation_matches": 646,
+      "evaluation_players": 220,
+      "evaluation_start": "2022-01-01",
+      "evidence_policy": "fixed_before_evaluation",
+      "feature_definition_policy": "fixed_before_evaluation",
+      "fold_id": "validation_2022",
+      "grass_matches": 66,
+      "hard_matches": 403,
+      "history_update_policy": "update_after_complete_date",
+      "is_final_test": false,
+      "neither_player_prior_matches": 10,
+      "one_player_prior_matches": 47,
+      "protocol": "rolling_origin",
+      "scoring_parameter_policy": "fixed_before_evaluation",
+      "seen_players_at_evaluation_start": 153,
+      "test_usage_policy": "method_selection_validation_only",
+      "train_cutoff": "2021-12-31",
+      "train_last_observed_date": "2021-12-19",
+      "train_matches": 4727,
+      "unseen_players_at_evaluation_start": 67
+    },
+    {
+      "both_players_prior_matches": 594,
+      "both_players_prior_rate": 0.9580645161290322,
+      "clay_matches": 157,
+      "evaluation_end": "2023-12-31",
+      "evaluation_first_observed_date": "2023-01-01",
+      "evaluation_last_observed_date": "2023-12-31",
+      "evaluation_matches": 620,
+      "evaluation_players": 178,
+      "evaluation_start": "2023-01-01",
+      "evidence_policy": "fixed_before_evaluation",
+      "feature_definition_policy": "fixed_before_evaluation",
+      "fold_id": "validation_2023",
+      "grass_matches": 76,
+      "hard_matches": 387,
+      "history_update_policy": "update_after_complete_date",
+      "is_final_test": false,
+      "neither_player_prior_matches": 2,
+      "one_player_prior_matches": 24,
+      "protocol": "rolling_origin",
+      "scoring_parameter_policy": "fixed_before_evaluation",
+      "seen_players_at_evaluation_start": 150,
+      "test_usage_policy": "method_selection_validation_only",
+      "train_cutoff": "2022-12-31",
+      "train_last_observed_date": "2022-12-18",
+      "train_matches": 5373,
+      "unseen_players_at_evaluation_start": 28
+    }
+  ],
+  "rolling_origin_contract": {
+    "calendar_day_rule": "all matches on a date are evaluated before that date updates history",
+    "evidence_policy_fixed_during_evaluation": true,
+    "feature_definition_fixed_during_evaluation": true,
+    "history_updates_after_complete_date": true,
+    "methodological_decisions_limited_to_2020_2023": true,
+    "scoring_and_parameters_fixed_during_evaluation": true,
+    "state_may_be_rebuilt_through_2023_only_after_methodology_is_closed": true,
+    "type": "expanding_window",
+    "validation_folds": 4,
+    "validation_years": [
+      2020,
+      2021,
+      2022,
+      2023
+    ]
+  },
+  "source_contract": {
+    "columns_used": [
+      "match_id",
+      "date",
+      "player_1",
+      "player_2",
+      "surface"
+    ],
+    "date_range": {
+      "first": "1960-05-29",
+      "last": "2026-05-21"
+    },
+    "matches_after_immediate_reduction": 7524,
+    "path": "data/processed/points_enriched.parquet",
+    "players": 1002,
+    "published_reports_used_as_analytical_source": false,
+    "single_parquet_read_per_execution": true,
+    "source_point_rows": 1280408
+  },
+  "split_contract": {
+    "assignment_uses_only_normalized_date": true,
+    "boundaries": {
+      "test": "2024-01-01 <= date <= 2026-05-21",
+      "train": "date <= 2019-12-31",
+      "validation": "2020-01-01 <= date <= 2023-12-31"
+    },
+    "complete_calendar_dates": true,
+    "unused_or_unassigned_route": false
+  },
+  "split_population": [
+    {
+      "basic_cold_start": {
+        "both": 3556,
+        "both_rate": 0.8490926456542502,
+        "neither": 77,
+        "one": 555
+      },
+      "first_observed_date": "1960-05-29",
+      "last_observed_date": "2019-11-24",
+      "matches": 4188,
+      "players": 709,
+      "seen_players_at_block_start": 0,
+      "split": "train",
+      "surface_matches": {
+        "clay": 987,
+        "grass": 535,
+        "hard": 2666
+      },
+      "unseen_players_at_block_start": 709
+    },
+    {
+      "basic_cold_start": {
+        "both": 1665,
+        "both_rate": 0.9224376731301939,
+        "neither": 21,
+        "one": 119
+      },
+      "first_observed_date": "2020-01-03",
+      "last_observed_date": "2023-12-31",
+      "matches": 1805,
+      "players": 332,
+      "seen_players_at_block_start": 171,
+      "split": "validation",
+      "surface_matches": {
+        "clay": 452,
+        "grass": 170,
+        "hard": 1183
+      },
+      "unseen_players_at_block_start": 161
+    },
+    {
+      "basic_cold_start": {
+        "both": 1420,
+        "both_rate": 0.9274983670803396,
+        "neither": 21,
+        "one": 90
+      },
+      "first_observed_date": "2024-01-01",
+      "last_observed_date": "2026-05-21",
+      "matches": 1531,
+      "players": 332,
+      "seen_players_at_block_start": 200,
+      "split": "test",
+      "surface_matches": {
+        "clay": 433,
+        "grass": 124,
+        "hard": 974
+      },
+      "unseen_players_at_block_start": 132
+    }
+  ],
+  "surface_contract": {
+    "allowed_values": [
+      "Hard",
+      "Clay",
+      "Grass"
+    ],
+    "null_allowed": false
+  },
+  "yearly_contract": {
+    "key": [
+      "year"
+    ],
+    "new_players_at_year_start_definition": "players active in year without any match before January 1",
+    "nonpartial_does_not_claim_exhaustive_historical_coverage": true,
+    "only_observed_years": true,
+    "partial_year_definition": "source fixed at 2026-05-21 before completion of calendar year",
+    "rows": 59
+  }
+}
