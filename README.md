@@ -176,6 +176,32 @@ modelos ni recomendaciones. La identidad textual exacta se considera valida
 solo para el Parquet procesado fijado. La eleccion de ventanas, suavizado,
 umbrales y validacion rolling-origin permanece pendiente para fases posteriores.
 
+### Variables comparables jugador-rival por direccion
+
+El constructor descriptivo amplía cada snapshot histórico a `wide`, `body` y
+`T`, tanto globalmente como en la superficie objetivo. Su unidad en memoria es
+`target_match_id x target_player x direction x scope` (90.288 filas). Todas las
+tasas utilizan el outcome común `P(server wins point)` y se publican como
+proporciones brutas acompañadas por IC95% Wilson. El baseline poblacional usa
+exclusivamente días anteriores al partido objetivo, igual que los historiales
+del servidor target y del rival-restador. La tabla completa de 90.288 filas
+permanece en memoria y no se versiona.
+
+```powershell
+python -m src.analysis.player_opponent_direction_features
+```
+
+Artefactos versionables generados:
+
+- `reports/player_opponent_direction_features_summary.json`
+- `reports/tables/player_opponent_direction_features_coverage.csv`
+- `reports/tables/player_opponent_direction_features_stability.csv`
+
+Se conservan estados explícitos de ausencia o presencia de evidencia. Los
+cortes de cobertura son solo descriptivos: no filtran filas ni seleccionan un
+umbral. No se aplican smoothing, fallback, scoring, modelos o recomendaciones,
+y las comparaciones son asociaciones históricas, no efectos causales.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
