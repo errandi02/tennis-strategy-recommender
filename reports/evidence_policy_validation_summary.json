@@ -1,0 +1,285 @@
+{
+  "analysis_name": "evidence_policy_chronological_validation",
+  "analysis_status": "available",
+  "analysis_version": "1.1.0",
+  "candidate_grid": {
+    "cartesian_candidates": 27,
+    "changed_after_observing_results": false,
+    "minimum_direction_matches_per_role": [
+      3,
+      5,
+      10
+    ],
+    "minimum_direction_points_per_role": [
+      25,
+      50,
+      100
+    ],
+    "scope_policies": [
+      "global_only",
+      "surface_only",
+      "surface_then_global"
+    ]
+  },
+  "candidate_summary": {
+    "candidate_count": 27,
+    "columns": [
+      "policy_id",
+      "min_points",
+      "min_matches",
+      "scope_policy",
+      "validation_matches",
+      "orientation_direction_denominator",
+      "eligible_orientation_directions",
+      "coverage_orientation",
+      "eligible_matches",
+      "coverage_match",
+      "complete_matches",
+      "coverage_complete_match",
+      "worst_fold_complete_match_coverage",
+      "complete_match_coverage_range",
+      "wide_coverage",
+      "body_coverage",
+      "T_coverage",
+      "hard_coverage",
+      "clay_coverage",
+      "grass_coverage",
+      "median_wilson_width",
+      "p90_wilson_width",
+      "worst_fold_p90_wilson_width",
+      "median_absolute_change",
+      "p90_absolute_change",
+      "worst_fold_p90_absolute_change",
+      "within_005_proportion",
+      "within_010_proportion",
+      "valid_stability_comparisons",
+      "surface_selection_proportion",
+      "global_selection_proportion",
+      "abstention_proportion",
+      "scope_coherence_reconciled"
+    ],
+    "no_automatic_winner": true
+  },
+  "eligibility_contract": {
+    "both_roles_must_pass": true,
+    "complete_match_requires_two_orientations_and_three_directions": true,
+    "directions": [
+      "wide",
+      "body",
+      "T"
+    ],
+    "roles": [
+      "server",
+      "opponent"
+    ],
+    "thresholds_are_inclusive": true,
+    "unit": "target_match_orientation_direction"
+  },
+  "fold_reconciliations": {
+    "expected_fold_sum": 1805,
+    "fold_sum": 1805,
+    "matches_by_fold": {
+      "2020": 168,
+      "2021": 371,
+      "2022": 646,
+      "2023": 620
+    }
+  },
+  "methodological_limits": [
+    "The comparison is descriptive and does not identify causal effects.",
+    "Narrower Wilson intervals do not imply tactical superiority.",
+    "Greater stability does not by itself imply a better recommendation.",
+    "Pareto membership does not validate a threshold or select a final policy.",
+    "Coverage is conditional on manually charted historical data and the approved parser contract."
+  ],
+  "pareto_contract": {
+    "maximize": "worst_fold_complete_match_coverage",
+    "minimize": [
+      "worst_fold_p90_wilson_width",
+      "worst_fold_p90_absolute_change"
+    ],
+    "strict_improvement_required_on_at_least_one_axis": true,
+    "undefined_axis_status": "not_comparable",
+    "unrounded_values_used": true
+  },
+  "pareto_summary": {
+    "automatic_selection_performed": false,
+    "dominated_policies": 19,
+    "non_dominated_policy_ids": [
+      "p025_m03_global_only",
+      "p025_m05_global_only",
+      "p025_m10_global_only",
+      "p050_m03_global_only",
+      "p050_m05_global_only",
+      "p050_m05_surface_then_global",
+      "p050_m10_global_only",
+      "p100_m10_global_only"
+    ],
+    "not_comparable_policy_ids": []
+  },
+  "population_contract": {
+    "eligible_second_serve_direction_points": 481190,
+    "eligible_server_wins": 245683,
+    "source_matches": 7524,
+    "source_players": 1002,
+    "source_point_rows": 1280408,
+    "upstream_total_feature_rows": 90288,
+    "upstream_total_snapshots": 15048,
+    "validation_matches": 1805,
+    "validation_orientation_direction_rows": 10830,
+    "validation_orientations": 3610
+  },
+  "publication_fingerprint": "3FACA4F962343FF71E3E2C384BF7A47F0F67C46492C56E4DC78488AEAD37C25C",
+  "reason_codes": [],
+  "reconciliations": {
+    "by_fold_keys_unique": true,
+    "candidate_grid_reconciled": true,
+    "candidate_keys_unique": true,
+    "constructed_targets_plus_excluded_reconcile": true,
+    "folds_exact": true,
+    "no_nan_or_infinity_serialized": true,
+    "no_policy_winner_selected": true,
+    "pareto_keys_unique": true,
+    "rates_bounded": true,
+    "scope_coherence_reconciled": true,
+    "six_features_per_constructed_snapshot": true,
+    "source_population_reconciled": true,
+    "test_remains_sealed": true,
+    "two_snapshots_per_constructed_match": true,
+    "validation_fold_sum_reconciled": true,
+    "zero_test_targets_constructed": true
+  },
+  "scope_policy_contracts": {
+    "global_only": "global history only",
+    "server_and_opponent_scope_must_match": true,
+    "surface_only": "target-surface history only; no fallback",
+    "surface_then_global": "surface only if both roles pass; otherwise global only if both pass"
+  },
+  "sealed_test_contract": {
+    "allowed_folds": [
+      2020,
+      2021,
+      2022,
+      2023
+    ],
+    "latest_allowed_target_date": "2023-12-31",
+    "test_evaluation_runs": 0,
+    "test_matches_evaluated": 0,
+    "test_rows_evaluated": 0,
+    "test_status": "sealed",
+    "used_for_method_selection": false
+  },
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "second_serve"
+    ],
+    "complete_source_read_for_contract_reconciliation": true,
+    "feature_builds": 1,
+    "path": "data/processed/points_enriched.parquet",
+    "physical_parquet_reads": 1,
+    "published_reports_used_as_analytical_source": false,
+    "snapshot_builds": 1,
+    "source_matches_observed": 7524,
+    "source_point_rows_read": 1280408
+  },
+  "stability_contract": {
+    "absolute_change_cuts": [
+      0.05,
+      0.1
+    ],
+    "noncomparable_observations_imputed": false,
+    "transitions": [
+      "2020_to_2021",
+      "2021_to_2022",
+      "2022_to_2023"
+    ],
+    "undefined_spearman_is_null_with_reason_code": true,
+    "unit": "eligible player mean historical rate within fold"
+  },
+  "surface_summary": {
+    "grass_fragmentation_statement": "Grass is not uniformly the lowest-coverage stratum across candidates.",
+    "grass_is_lowest_coverage_for_all_candidates": false,
+    "surfaces": [
+      "Hard",
+      "Clay",
+      "Grass"
+    ],
+    "used_to_modify_candidate_grid": false
+  },
+  "target_construction_contract": {
+    "constructed_feature_rows": 71916,
+    "constructed_snapshot_rows": 11986,
+    "constructed_target_matches": 5993,
+    "features_per_snapshot": 6,
+    "latest_target_date": "2023-12-31",
+    "snapshots_per_constructed_match": 2,
+    "source_target_matches": 7524,
+    "test_feature_rows_constructed": 0,
+    "test_target_matches_constructed": 0,
+    "test_target_matches_excluded_before_construction": 1531,
+    "test_target_rows_constructed": 0
+  },
+  "uncertainty_contract": {
+    "independent_scalar_check_performed": true,
+    "interval": "two-sided Wilson 95%",
+    "quantile_method": "linear",
+    "width_summaries": [
+      "mean",
+      "median",
+      "p75",
+      "p90",
+      "p95",
+      "maximum"
+    ],
+    "z": 1.959963984540054,
+    "zero_denominator_is_null": true
+  },
+  "upstream_commits": {
+    "chronological_validation": "3ac28b4",
+    "historical_profiles": "68a30c1",
+    "player_opponent_direction_features": "a1a41aa"
+  },
+  "validation_protocol": {
+    "folds": [
+      {
+        "evaluation_end": "2020-12-31",
+        "evaluation_matches": 168,
+        "evaluation_start": "2020-01-01",
+        "fold": 2020,
+        "history_end": "2019-12-31"
+      },
+      {
+        "evaluation_end": "2021-12-31",
+        "evaluation_matches": 371,
+        "evaluation_start": "2021-01-01",
+        "fold": 2021,
+        "history_end": "2020-12-31"
+      },
+      {
+        "evaluation_end": "2022-12-31",
+        "evaluation_matches": 646,
+        "evaluation_start": "2022-01-01",
+        "fold": 2022,
+        "history_end": "2021-12-31"
+      },
+      {
+        "evaluation_end": "2023-12-31",
+        "evaluation_matches": 620,
+        "evaluation_start": "2023-01-01",
+        "fold": 2023,
+        "history_end": "2022-12-31"
+      }
+    ],
+    "history_strictly_before_target_calendar_day": true,
+    "same_day_history_blocked": true,
+    "type": "rolling_origin_expanding"
+  }
+}

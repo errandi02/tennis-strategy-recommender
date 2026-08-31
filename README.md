@@ -236,6 +236,40 @@ indica si existe algun partido en una fecha estrictamente anterior; no mide
 evidencia direccional suficiente y no selecciona thresholds, modelos ni
 recomendaciones.
 
+### Validacion cronologica de politicas de evidencia
+
+La evaluacion descriptiva compara en los folds rolling-origin 2020--2023 el
+producto cartesiano fijo de 25/50/100 puntos, 3/5/10 partidos y los scopes
+`global_only`, `surface_only` y `surface_then_global`: exactamente 27
+politicas. Una orientacion-direccion solo es elegible cuando el jugador al
+saque y el rival al resto superan conjuntamente ambos minimos en el mismo
+scope. El fallback de superficie a global es atomico para los dos roles.
+
+El Parquet completo se lee una sola vez para reconciliar la fuente de 7.524
+partidos. Las cardinalidades upstream son 15.048 snapshots y 90.288 filas de
+features, pero este analisis excluye los 1.531 targets de test antes de llamar
+a sus constructores: solo construye 5.993 partidos target hasta 2023, 11.986
+snapshots y 71.916 filas de features. Por tanto, se construyen y evaluan cero
+targets o features de test.
+
+```powershell
+python -m src.analysis.evidence_policy_validation
+```
+
+Artefactos agregados versionables:
+
+- `reports/evidence_policy_validation_summary.json`
+- `reports/tables/evidence_policy_validation_candidates.csv`
+- `reports/tables/evidence_policy_validation_by_fold.csv`
+- `reports/tables/evidence_policy_validation_pareto.csv`
+
+La shortlist conserva todas las politicas no dominadas al maximizar la peor
+cobertura de partidos completos y minimizar los peores p90 de amplitud Wilson
+y cambio historico. No selecciona automaticamente una ganadora. El test
+2024--2026 permanece sellado con cero evaluaciones y no interviene en esta
+comparacion. No se entrena ningun modelo ni se crean scoring, recomendaciones
+o afirmaciones causales.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
