@@ -270,6 +270,35 @@ y cambio historico. No selecciona automaticamente una ganadora. El test
 comparacion. No se entrena ningun modelo ni se crean scoring, recomendaciones
 o afirmaciones causales.
 
+#### Seleccion metodologica de la politica de evidencia
+
+La regla congelada sobre validacion 2020--2023 selecciona
+`p050_m05_surface_then_global`: exige conjuntamente al servidor y al oponente
+al menos 50 puntos y 5 partidos por direccion. Usa historia de la superficie
+solo cuando ambos roles superan los minimos; en caso contrario aplica fallback
+global conjunto y se abstiene si tampoco existe evidencia global suficiente.
+La candidata supera los limites preespecificados de peor cobertura completa
+(`>= 0.50`), peor p90 Wilson (`<= 0.25`) y peor p90 de cambio historico
+(`<= 0.08`). Estos thresholds son reglas operativas, no suficiencia universal.
+
+```powershell
+python -m src.analysis.evidence_policy_selection
+```
+
+Artefactos agregados versionables:
+
+- `reports/evidence_policy_selection_summary.json`
+- `reports/tables/evidence_policy_selection_comparison.csv`
+
+La decision consume exclusivamente los artefactos agregados del commit
+`88fafe7`; no lee el Parquet ni reconstruye perfiles. El test 2024--2026 sigue
+sellado y no interviene. La politica controla disponibilidad de evidencia: no
+demuestra causalidad, no entrena un modelo y no genera recomendaciones tacticas
+automaticas. La shortlist Pareto completa anterior se conserva como contexto.
+El control `p050_m05_global_only` se compara siempre de forma descriptiva, pero
+solo se activa como fallback si falla la candidata primaria; en el resultado
+publicado la primaria pasa y el fallback no se evalua ni se activa.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y

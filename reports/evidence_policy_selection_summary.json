@@ -1,0 +1,376 @@
+{
+  "absolute_limits": {
+    "maximum_worst_fold_p90_absolute_change": 0.08,
+    "maximum_worst_fold_p90_wilson_width": 0.25,
+    "minimum_worst_fold_complete_match_coverage": 0.5
+  },
+  "analysis_name": "evidence_policy_selection",
+  "analysis_version": "1.0.0",
+  "candidate_checks": {
+    "failed_criteria": [],
+    "fold_contract": {
+      "coverage_by_fold": {
+        "2020": 0.6845238095238095,
+        "2021": 0.6226415094339622,
+        "2022": 0.6811145510835913,
+        "2023": 0.7209677419354839
+      },
+      "denominators_reconciled": true,
+      "stability_defined_when_comparable": true,
+      "valid": true,
+      "wilson_defined_when_observed": true
+    },
+    "pareto_eligible": true,
+    "passes_all_absolute_limits": true,
+    "passes_all_selection_criteria": true,
+    "passes_coverage_limit": true,
+    "passes_stability_limit": true,
+    "passes_structural_minimum": true,
+    "passes_wilson_limit": true,
+    "policy_id": "p050_m05_surface_then_global",
+    "scope_contract": {
+      "abstention_accounted": true,
+      "fallback_accounted": true,
+      "joint_role_eligibility": true,
+      "mixed_scopes": false,
+      "surfaces_reported": [
+        "Hard",
+        "Clay",
+        "Grass"
+      ],
+      "valid": true
+    }
+  },
+  "candidate_shortlist": [
+    "p025_m03_global_only",
+    "p025_m05_global_only",
+    "p025_m10_global_only",
+    "p050_m03_global_only",
+    "p050_m05_global_only",
+    "p050_m05_surface_then_global",
+    "p050_m10_global_only",
+    "p100_m10_global_only"
+  ],
+  "comparison": {
+    "coverage_by_direction": {
+      "T": {
+        "difference": 0.0,
+        "global_control": 0.7185595567867036,
+        "primary": 0.7185595567867036
+      },
+      "body": {
+        "difference": 0.0,
+        "global_control": 0.7523545706371191,
+        "primary": 0.7523545706371191
+      },
+      "wide": {
+        "difference": 0.0,
+        "global_control": 0.7520775623268698,
+        "primary": 0.7520775623268698
+      }
+    },
+    "coverage_by_fold": {
+      "2020": {
+        "difference": 0.0,
+        "global_control": 0.6845238095238095,
+        "primary": 0.6845238095238095
+      },
+      "2021": {
+        "difference": 0.0,
+        "global_control": 0.6226415094339622,
+        "primary": 0.6226415094339622
+      },
+      "2022": {
+        "difference": 0.0,
+        "global_control": 0.6811145510835913,
+        "primary": 0.6811145510835913
+      },
+      "2023": {
+        "difference": 0.0,
+        "global_control": 0.7209677419354839,
+        "primary": 0.7209677419354839
+      }
+    },
+    "coverage_by_surface": {
+      "Clay": {
+        "difference": 0.0,
+        "global_control": 0.6736725663716814,
+        "primary": 0.6736725663716814
+      },
+      "Grass": {
+        "difference": 0.0,
+        "global_control": 0.7803921568627451,
+        "primary": 0.7803921568627451
+      },
+      "Hard": {
+        "difference": 0.0,
+        "global_control": 0.7610594533671456,
+        "primary": 0.7610594533671456
+      }
+    },
+    "difference_definition": "primary_minus_global_control",
+    "differences": {
+      "abstention_proportion": 0.0,
+      "complete_match_coverage": 0.0,
+      "global_fallback_proportion": -0.5585410895660203,
+      "median_wilson_width": 0.025643769508486,
+      "surface_selection_proportion": 0.5585410895660203,
+      "worst_fold_complete_match_coverage": 0.0,
+      "worst_fold_p90_absolute_change": -0.001457974098329498,
+      "worst_fold_p90_wilson_width": 0.027561628975854707
+    },
+    "interpretation": "La preferencia por surface_then_global procede de la regla metodologica congelada; no demuestra superioridad estadistica."
+  },
+  "control_descriptive_checks": {
+    "failed_criteria": [],
+    "fold_contract": {
+      "coverage_by_fold": {
+        "2020": 0.6845238095238095,
+        "2021": 0.6226415094339622,
+        "2022": 0.6811145510835913,
+        "2023": 0.7209677419354839
+      },
+      "denominators_reconciled": true,
+      "stability_defined_when_comparable": true,
+      "valid": true,
+      "wilson_defined_when_observed": true
+    },
+    "pareto_eligible": true,
+    "passes_all_absolute_limits": true,
+    "passes_all_selection_criteria": true,
+    "passes_coverage_limit": true,
+    "passes_stability_limit": true,
+    "passes_structural_minimum": true,
+    "passes_wilson_limit": true,
+    "policy_id": "p050_m05_global_only",
+    "scope_contract": {
+      "abstention_accounted": true,
+      "fallback_accounted": false,
+      "joint_role_eligibility": true,
+      "mixed_scopes": false,
+      "surfaces_reported": [
+        "Hard",
+        "Clay",
+        "Grass"
+      ],
+      "valid": true
+    }
+  },
+  "decision_execution": {
+    "control_descriptively_compared": true,
+    "fallback_activated": false,
+    "fallback_evaluated": false,
+    "primary_evaluated": true,
+    "primary_passed": true,
+    "third_candidate_evaluated": false
+  },
+  "decision_rule": {
+    "limits_use_unrounded_floats": true,
+    "ordered_steps": [
+      "pareto_eligibility",
+      "structural_minimum",
+      "absolute_limits",
+      "fold_coherence",
+      "scope_contract",
+      "primary_then_global_control"
+    ],
+    "primary_candidate": "p050_m05_surface_then_global",
+    "single_fallback": "p050_m05_global_only",
+    "third_candidate_attempt_allowed": false
+  },
+  "fallback_evaluation": {
+    "activated": false,
+    "control_checks": null,
+    "evaluated": false
+  },
+  "global_control": {
+    "abstention_proportion": 0.2590027700831025,
+    "complete_match_coverage": 0.6831024930747922,
+    "coverage_by_direction": {
+      "T": 0.7185595567867036,
+      "body": 0.7523545706371191,
+      "wide": 0.7520775623268698
+    },
+    "coverage_by_surface": {
+      "Clay": 0.6736725663716814,
+      "Grass": 0.7803921568627451,
+      "Hard": 0.7610594533671456
+    },
+    "global_selection_proportion": 0.7409972299168975,
+    "median_wilson_width": 0.0900362630268688,
+    "min_matches": 5,
+    "min_points": 50,
+    "policy_id": "p050_m05_global_only",
+    "scope_policy": "global_only",
+    "surface_selection_proportion": 0.0,
+    "worst_fold_complete_match_coverage": 0.6226415094339622,
+    "worst_fold_p90_absolute_change": 0.0792576719381202,
+    "worst_fold_p90_wilson_width": 0.2078054972789983
+  },
+  "methodological_limits": [
+    "Decision basada solo en validacion observacional 2020--2023.",
+    "Los limites no son pruebas de significacion ni garantias causales.",
+    "La cobertura historica es desigual, especialmente en Grass.",
+    "La seleccion no genera recomendaciones tacticas automaticas."
+  ],
+  "methodological_rationale": {
+    "grass": "Grass es un estrato fragmentado y no modifica la politica a posteriori.",
+    "structural_minimum": "50 puntos y 5 partidos por direccion y rol son una regla operativa conservadora, no suficiencia estadistica universal.",
+    "surface_context": "Surface se prioriza solo con evidencia conjunta; global actua como fallback conjunto."
+  },
+  "next_step_constraints": [
+    "Mantener el test 2024--2026 sellado hasta cerrar metodologia y metricas.",
+    "No cambiar thresholds, smoothing, fallback o features usando el test.",
+    "No emitir recomendacion cuando la politica se abstiene.",
+    "Interpretar resultados posteriores como asociaciones historicas, no efectos causales."
+  ],
+  "primary_candidate": {
+    "abstention_proportion": 0.2590027700831025,
+    "complete_match_coverage": 0.6831024930747922,
+    "coverage_by_direction": {
+      "T": 0.7185595567867036,
+      "body": 0.7523545706371191,
+      "wide": 0.7520775623268698
+    },
+    "coverage_by_surface": {
+      "Clay": 0.6736725663716814,
+      "Grass": 0.7803921568627451,
+      "Hard": 0.7610594533671456
+    },
+    "global_selection_proportion": 0.1824561403508772,
+    "median_wilson_width": 0.1156800325353548,
+    "min_matches": 5,
+    "min_points": 50,
+    "policy_id": "p050_m05_surface_then_global",
+    "scope_policy": "surface_then_global",
+    "surface_selection_proportion": 0.5585410895660203,
+    "worst_fold_complete_match_coverage": 0.6226415094339622,
+    "worst_fold_p90_absolute_change": 0.0777996978397907,
+    "worst_fold_p90_wilson_width": 0.235367126254853
+  },
+  "publication_fingerprint": "69CA9A9DEF7E50AB702DBDC5A61899CEF691D82431CB45FD9CE661E364892547",
+  "reason_codes": [],
+  "reconciliations": {
+    "candidate_keys_unique": true,
+    "comparison_canonical": true,
+    "dominance_reconstructed": true,
+    "folds_2020_2023_only": true,
+    "no_policy_winner_chosen_from_test": true,
+    "pareto_19_dominated": true,
+    "pareto_8_non_dominated": true,
+    "pareto_axes_finite": true,
+    "required_policies_present": true,
+    "selected_contract_coherent": true,
+    "selection_cardinality_valid": true,
+    "selection_state_coherent": true,
+    "shortlist_exact": true,
+    "test_remains_sealed": true,
+    "upstream_candidate_count_27": true,
+    "upstream_hashes_exact": true
+  },
+  "rejected_alternatives": [
+    {
+      "policy_id": "p025_m03_global_only",
+      "reason": "minimum_points_not_met|minimum_matches_not_met|context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    },
+    {
+      "policy_id": "p025_m05_global_only",
+      "reason": "minimum_points_not_met|context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    },
+    {
+      "policy_id": "p025_m10_global_only",
+      "reason": "minimum_points_not_met|context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    },
+    {
+      "policy_id": "p050_m03_global_only",
+      "reason": "minimum_matches_not_met|context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    },
+    {
+      "policy_id": "p050_m05_global_only",
+      "reason": "primary_selected_fallback_not_activated",
+      "selection_role": "global_control"
+    },
+    {
+      "policy_id": "p050_m10_global_only",
+      "reason": "context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    },
+    {
+      "policy_id": "p100_m10_global_only",
+      "reason": "coverage_limit_not_met|context_only_not_in_primary_fallback_path",
+      "selection_role": "context_only"
+    }
+  ],
+  "sealed_test_contract": {
+    "decision_data": "validation_2020_2023_only",
+    "selected_by_test_performance": false,
+    "test_evaluation_runs": 0,
+    "test_matches_evaluated": 0,
+    "test_read": false,
+    "test_rows_evaluated": 0,
+    "test_status": "sealed",
+    "used_for_policy_selection": false
+  },
+  "selected_policy": "p050_m05_surface_then_global",
+  "selected_policy_contract": {
+    "abstain_when_evidence_is_insufficient": true,
+    "automatic_recommendation": false,
+    "complete_match_requires_directions": 3,
+    "complete_match_requires_orientations": 2,
+    "imputation": false,
+    "joint_global_fallback": true,
+    "joint_role_eligibility": true,
+    "min_matches_per_direction_and_role": 5,
+    "min_points_per_direction_and_role": 50,
+    "mixed_scopes": false,
+    "outcome": "P(server_won_point)",
+    "policy_id": "p050_m05_surface_then_global",
+    "required_directions": [
+      "wide",
+      "body",
+      "T"
+    ],
+    "required_roles": [
+      "server",
+      "opponent"
+    ],
+    "scope_policy": "surface_then_global",
+    "smoothing": false,
+    "surface_priority": true
+  },
+  "selection_path": "primary_candidate_selected",
+  "selection_status": "selected_primary",
+  "source_artifacts": [
+    {
+      "bytes": 8266,
+      "path": "reports/evidence_policy_validation_summary.json",
+      "sha256": "5AAC50C23DE8F9EECE61A573D445FB1B816D4769BE61D6875A614BE1E0E812BF"
+    },
+    {
+      "bytes": 14020,
+      "path": "reports/tables/evidence_policy_validation_candidates.csv",
+      "sha256": "D819622887DD8670BB4FFCD8A9FFA7A1A6522739870C8890E71689D1CBB8051D"
+    },
+    {
+      "bytes": 5827,
+      "path": "reports/tables/evidence_policy_validation_pareto.csv",
+      "sha256": "8DA16E25CB1571EF901A56A70094616FC73EF462F2616F515CB645C2B1720968"
+    },
+    {
+      "bytes": 3008660,
+      "path": "reports/tables/evidence_policy_validation_by_fold.csv",
+      "sha256": "72310FFDB2CB9328274C36C8995B5B0CC8B804F9F9462F9394EE8E592F803E93"
+    }
+  ],
+  "upstream_commit": "88fafe7",
+  "upstream_hashes": {
+    "reports/evidence_policy_validation_summary.json": "5AAC50C23DE8F9EECE61A573D445FB1B816D4769BE61D6875A614BE1E0E812BF",
+    "reports/tables/evidence_policy_validation_by_fold.csv": "72310FFDB2CB9328274C36C8995B5B0CC8B804F9F9462F9394EE8E592F803E93",
+    "reports/tables/evidence_policy_validation_candidates.csv": "D819622887DD8670BB4FFCD8A9FFA7A1A6522739870C8890E71689D1CBB8051D",
+    "reports/tables/evidence_policy_validation_pareto.csv": "8DA16E25CB1571EF901A56A70094616FC73EF462F2616F515CB645C2B1720968"
+  }
+}
