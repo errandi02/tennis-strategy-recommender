@@ -1,0 +1,299 @@
+{
+  "analysis_name": "explainable_direction_scoring",
+  "analysis_version": "1.0.0",
+  "artifact_payload_bytes": {
+    "by_direction": 12400,
+    "by_fold": 28344,
+    "calibration": 12376,
+    "ranking": 4369
+  },
+  "artifact_payload_sha256": {
+    "by_direction": "367BD35B9FF613AE940AF64EBDCA7556BF48DAFB2D0B83F33FAB706EAE148CCA",
+    "by_fold": "622C72683CB7984821F7A7BE759FC065A70FAE6294D84C9C27E58434FD737E37",
+    "calibration": "E6CD59A10BD6D94A0CB4281FCA8C6303EA75F2AA83389D1EBC82D1328E0A4038",
+    "ranking": "23D4BA434571EE1C69F788470AA7B8991FBEE31806C1DF90E568EFF81F8D31D5"
+  },
+  "baseline_status": "validated_descriptive_baseline",
+  "calibration": {
+    "bins": 10,
+    "definition": "fixed_width_0.1",
+    "empty_bins_retained": true,
+    "log_loss_epsilon": 1e-15,
+    "rows": 200
+  },
+  "coverage": {
+    "abstained_target_points": 28899,
+    "complete_direction_sets": 2466,
+    "complete_matches": 1162,
+    "eligible_target_points": 111290,
+    "global_fallback_orientations": 1953,
+    "point_coverage": 0.740327073411807,
+    "scored_orientations": 2778,
+    "scored_target_points": 82391,
+    "surface_selected_orientations": 5992,
+    "target_orientations": 3610
+  },
+  "explainability": {
+    "both_negative": 2117,
+    "both_positive": 1852,
+    "dominant_component": {
+      "opponent": 4049,
+      "server": 3890,
+      "tie": 6
+    },
+    "equation": "population baseline + 0.5 * server component + 0.5 * opponent component = combined score",
+    "opponent_component_distribution": {
+      "maximum": 0.18065260475887557,
+      "median": -0.006591998894849738,
+      "minimum": -0.19706279805386573,
+      "p25": -0.03586528775231468,
+      "p75": 0.02266460665693637
+    },
+    "opponent_component_negative": 4521,
+    "opponent_component_positive": 3424,
+    "opposite_signs": 3976,
+    "orientations": 7945,
+    "selected_scope": {
+      "global": 1953,
+      "surface": 5992
+    },
+    "server_component_distribution": {
+      "maximum": 0.19481700453153994,
+      "median": 0.0036021380432256778,
+      "minimum": -0.2728184845477201,
+      "p25": -0.02753185976242345,
+      "p75": 0.031828271034993416
+    },
+    "server_component_negative": 3689,
+    "server_component_positive": 4256,
+    "unit": "eligible_target_match_player_direction"
+  },
+  "fingerprint_contract_version": "2",
+  "formula_contract": {
+    "combined_gap": "combined_score - population_rate",
+    "combined_score": "(server_rate + opponent_allowed_rate) / 2",
+    "identity": "combined_gap = (server_component + opponent_component) / 2",
+    "imputation": false,
+    "opponent_component": "opponent_allowed_rate - population_rate",
+    "server_component": "server_rate - population_rate",
+    "smoothing": false
+  },
+  "formula_identity_max_abs_error": 5.551115123125783e-17,
+  "formula_identity_rows_checked": 82391,
+  "formula_identity_tolerance": 1e-15,
+  "methodological_limits": [
+    "Baseline descriptivo basado en asociaciones historicas; no es causal.",
+    "Los pesos 0.5/0.5 no fueron ajustados a los resultados.",
+    "El ranking secundario puede ser ruidoso por pocos puntos target por direccion.",
+    "No se generan recomendaciones tacticas automaticas."
+  ],
+  "paired_match_comparison": {
+    "opponent_only": {
+      "main_lower_brier_proportion": 0.56025824964132,
+      "mean_difference_main_minus_control": -0.0009813852864561476,
+      "median_difference_main_minus_control": -0.0005068990407880031,
+      "p25": -0.0035053578133447116,
+      "p75": 0.0018776259598091705,
+      "pairs": 1394,
+      "unit": "target_match"
+    },
+    "population_only": {
+      "main_lower_brier_proportion": 0.5315638450502153,
+      "mean_difference_main_minus_control": -0.0005986504779391095,
+      "median_difference_main_minus_control": -0.0003013124305831366,
+      "p25": -0.0032159560287365677,
+      "p75": 0.0021654270008062484,
+      "pairs": 1394,
+      "unit": "target_match"
+    },
+    "server_only": {
+      "main_lower_brier_proportion": 0.6061692969870875,
+      "mean_difference_main_minus_control": -0.0011230218863545003,
+      "median_difference_main_minus_control": -0.000915071439122922,
+      "p25": -0.003808717246693155,
+      "p75": 0.0015536042828057303,
+      "pairs": 1394,
+      "unit": "target_match"
+    }
+  },
+  "population": {
+    "constructed_feature_rows": 71916,
+    "constructed_snapshot_rows": 11986,
+    "constructed_target_matches": 5993,
+    "eligible_history_points": 481190,
+    "source_matches": 7524
+  },
+  "probability_metrics": {
+    "opponent_only": {
+      "brier_score": 0.25050592551745887,
+      "calibration_gap": -0.003948265370472881,
+      "log_loss": 0.6942042581799986,
+      "mean_score": 0.5033401520537604,
+      "n_matches": 1394,
+      "n_orientations": 2778,
+      "n_points": 82391,
+      "observed_rate": 0.5072884174242333
+    },
+    "population_only": {
+      "brier_score": 0.24989674189647937,
+      "calibration_gap": 0.0021121645298968206,
+      "log_loss": 0.6929405992074684,
+      "mean_score": 0.5094005819541301,
+      "n_matches": 1394,
+      "n_orientations": 2778,
+      "n_points": 82391,
+      "observed_rate": 0.5072884174242333
+    },
+    "server_only": {
+      "brier_score": 0.2506414051597158,
+      "calibration_gap": 0.003352144977222804,
+      "log_loss": 0.6944763312464534,
+      "mean_score": 0.510640562401456,
+      "n_matches": 1394,
+      "n_orientations": 2778,
+      "n_points": 82391,
+      "observed_rate": 0.5072884174242333
+    },
+    "server_opponent_equal": {
+      "brier_score": 0.24953811361635891,
+      "calibration_gap": -0.00029806019662503846,
+      "log_loss": 0.692225835331638,
+      "mean_score": 0.5069903572276082,
+      "n_matches": 1394,
+      "n_orientations": 2778,
+      "n_points": 82391,
+      "observed_rate": 0.5072884174242333
+    }
+  },
+  "publication_fingerprint": "A5F501076305F59A9D62E492E92A98968F88AB3EB09744E364B315797E1955D7",
+  "ranking": {
+    "noise_limit": "Las tasas target por direccion pueden basarse en pocos puntos; ranking descriptivo secundario.",
+    "rows": 20,
+    "tie_break": [
+      "wide",
+      "body",
+      "T"
+    ],
+    "unit": "target_match_id x target_player"
+  },
+  "reason_codes": [],
+  "reconciliations": {
+    "calibration_bins_complete": true,
+    "directions_exact": true,
+    "feature_keys_unique": true,
+    "folds_exact_2020_2023": true,
+    "formula_identity_reconciled": true,
+    "no_test_contamination": true,
+    "one_feature_construction": true,
+    "one_parquet_read": true,
+    "one_snapshot_construction": true,
+    "outcome_binary": true,
+    "policy_exact": true,
+    "ranking_only_comparable_orientations": true,
+    "scores_finite_in_unit_interval": true,
+    "strict_history_prior": true,
+    "summary_and_csv_canonical": true,
+    "surface_then_global_atomic": true,
+    "targets_no_later_than_2023_12_31": true,
+    "two_orientations_per_match": true,
+    "upstream_hashes_exact": true,
+    "zero_self_reference": true,
+    "zero_temporal_violations": true
+  },
+  "scorer_contracts": {
+    "opponent_only": "opponent_allowed_rate",
+    "population_only": "population_rate",
+    "primary_scorer": "server_opponent_equal",
+    "server_only": "server_rate",
+    "server_opponent_equal": "(server_rate + opponent_allowed_rate) / 2",
+    "weights_fixed": {
+      "opponent": 0.5,
+      "server": 0.5
+    }
+  },
+  "sealed_test_contract": {
+    "test_evaluation_runs": 0,
+    "test_feature_rows_constructed": 0,
+    "test_matches_scored": 0,
+    "test_points_scored": 0,
+    "test_status": "sealed",
+    "test_target_matches_constructed": 0,
+    "test_target_matches_excluded_before_construction": 1531,
+    "used_for_method_selection": false
+  },
+  "selected_policy_contract": {
+    "abstain_when_evidence_is_insufficient": true,
+    "automatic_recommendation": false,
+    "complete_match_requires_directions": 3,
+    "complete_match_requires_orientations": 2,
+    "imputation": false,
+    "joint_global_fallback": true,
+    "joint_role_eligibility": true,
+    "min_matches_per_direction_and_role": 5,
+    "min_points_per_direction_and_role": 50,
+    "mixed_scopes": false,
+    "outcome": "P(server_won_point)",
+    "policy_id": "p050_m05_surface_then_global",
+    "required_directions": [
+      "wide",
+      "body",
+      "T"
+    ],
+    "required_roles": [
+      "server",
+      "opponent"
+    ],
+    "scope_policy": "surface_then_global",
+    "smoothing": false,
+    "surface_priority": true
+  },
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "single_read": true,
+    "source_point_rows": 1280408
+  },
+  "upstream_commits": {
+    "chronological_validation": "3ac28b4",
+    "evidence_policy_selection": "989d02a",
+    "evidence_policy_validation": "88fafe7",
+    "historical_profiles": "68a30c1",
+    "player_opponent_direction_features": "a1a41aa"
+  },
+  "upstream_hashes": {
+    "reports/chronological_validation_summary.json": "90890B721CC93C82A5DE5F2EB6E3F3D4E5D4D3E83E6C9E678C5569139301799F",
+    "reports/evidence_policy_selection_summary.json": "317CC9F3F603672965C98DD93AB0C4D32F8CF91D86A0FC76558063720839C330",
+    "reports/evidence_policy_validation_summary.json": "5AAC50C23DE8F9EECE61A573D445FB1B816D4769BE61D6875A614BE1E0E812BF"
+  },
+  "validation_criteria": {
+    "at_least_three_folds_not_worse": true,
+    "contract_and_temporality": true,
+    "folds_brier_not_worse_than_population": 4,
+    "main_brier_not_worse_than_population": true,
+    "main_brier_not_worse_than_worst_individual": true,
+    "main_log_loss_not_worse_than_population": true,
+    "scores_finite_in_unit_interval": true
+  },
+  "validation_population": {
+    "directions": {
+      "T": 31291,
+      "body": 42206,
+      "wide": 37793
+    },
+    "matches": 1805,
+    "orientations": 3610,
+    "recognized_direction_points": 111290,
+    "server_wins": 56402,
+    "substantive_second_serve_points": 111290
+  }
+}

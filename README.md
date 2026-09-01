@@ -299,6 +299,39 @@ El control `p050_m05_global_only` se compara siempre de forma descriptiva, pero
 solo se activa como fallback si falla la candidata primaria; en el resultado
 publicado la primaria pasa y el fallback no se evalua ni se activa.
 
+#### Baseline explicable de scoring por direccion
+
+El baseline descriptivo aplica la politica seleccionada
+`p050_m05_surface_then_global` a las features historicas sin fuga y evalua los
+folds 2020--2023. Para cada direccion elegible combina, con pesos iguales, la
+tasa historica del servidor y la tasa historica permitida por el rival al resto
+alrededor de la tasa poblacional: `score = population + 0.5 * (server -
+population) + 0.5 * (opponent_allowed - population)`. Compara cuatro scorers:
+poblacion, solo servidor, solo rival y el combinado igualitario.
+
+```powershell
+python -m src.analysis.explainable_direction_scoring
+```
+
+Artefactos agregados versionables:
+
+- `reports/explainable_direction_scoring_summary.json`
+- `reports/tables/explainable_direction_scoring_by_fold.csv`
+- `reports/tables/explainable_direction_scoring_by_direction.csv`
+- `reports/tables/explainable_direction_scoring_calibration.csv`
+- `reports/tables/explainable_direction_scoring_ranking.csv`
+
+El baseline queda validado solo si satisface los criterios congelados de Brier,
+log-loss, calibracion, rango finito de probabilidades y estabilidad por fold.
+Se abstiene cuando no hay evidencia conjunta suficiente para las tres
+direcciones y ambos roles. El test 2024--2026 permanece sellado y recibe cero
+evaluaciones. Este score es descriptivo: no establece causalidad, no constituye
+una recomendacion tactica final y no sustituye la evaluacion posterior del
+protocolo sellado. La mejora observada frente al scorer poblacional es modesta
+(Δ Brier aproximado -0,000359; Δ log-loss aproximado -0,000715): no demuestra
+relevancia tactica ni garantiza generalizacion al test sellado, y no genera
+recomendaciones automaticas.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
