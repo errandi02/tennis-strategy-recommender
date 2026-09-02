@@ -1,0 +1,193 @@
+{
+  "abstention_contract": {
+    "no_partial_ranking": true,
+    "priority": [
+      "not_available_invalid_input",
+      "abstained_insufficient_evidence",
+      "abstained_incomparable_scope",
+      "available_full"
+    ]
+  },
+  "analysis_name": "explainable_direction_recommender",
+  "analysis_version": "1.0.0",
+  "artifact_payload_bytes": {
+    "coverage": 11762,
+    "explanations": 245841,
+    "rankings": 47822
+  },
+  "artifact_payload_sha256": {
+    "coverage": "C5CE35EA0F42A91A80086A9591B6B8969C46253413C79DA3E9ED7F997347EC04",
+    "explanations": "76635CBBF2D1A70002A9583165F518FA042B6EE43F166F75071A2AF919E1FEE9",
+    "rankings": "18F76AD9C670BCD3FD07F86AE9226080E84E8C29DE73F6731ADBDE0EADFDCD80"
+  },
+  "chronological_seal": {
+    "test_evaluation_runs": 0,
+    "test_feature_rows_constructed": 0,
+    "test_matches_evaluated": 0,
+    "test_matches_scored": 0,
+    "test_points_scored": 0,
+    "test_recommendation_rows": 0,
+    "test_rows_evaluated": 0,
+    "test_status": "sealed",
+    "test_target_matches_constructed": 0,
+    "test_target_matches_excluded_before_construction": 1531,
+    "test_target_rows_constructed": 0,
+    "used_for_method_selection": false
+  },
+  "comparability_contract": {
+    "available_scopes": [
+      "surface",
+      "global"
+    ],
+    "does_not_claim_statistical_incompatibility": true,
+    "engine_barrier": "all_three_directions_must_share_selected_scope",
+    "mixed_scopes": "abstain_without_ranking",
+    "upstream_scope_selection": "per_direction_joint_server_opponent"
+  },
+  "explanation_contract": {
+    "codes": [
+      "balanced_components",
+      "deterministic_tie_break",
+      "direction_not_scoreable",
+      "evidence_above_threshold",
+      "evidence_threshold_just_met",
+      "global_fallback_used",
+      "incomplete_direction_set",
+      "mixed_direction_scopes",
+      "narrow_score_margin",
+      "opponent_component_higher",
+      "recommendation_abstained",
+      "recommendation_available",
+      "server_component_higher",
+      "surface_history_used"
+    ],
+    "component_tolerance": 1e-12,
+    "narrow_score_margin": 0.01,
+    "text_free": true
+  },
+  "fingerprint_contract_version": "2",
+  "methodological_limits": [
+    "Resultados descriptivos basados en historia observacional; no identifican efectos causales.",
+    "El ranking no garantiza superioridad tactica ni generalizacion al test sellado.",
+    "La barrera de scope comun es conservadora y puede reducir cobertura; no afirma incompatibilidad estadistica entre scopes.",
+    "La tabla individual completa se conserva solo en memoria."
+  ],
+  "population": {
+    "abstained_points": 28899,
+    "eligible_historical_points": 481190,
+    "eligible_scoring_points": 111290,
+    "excluded_test_target_matches": 1531,
+    "scored_points": 82391,
+    "sealed_feature_rows": 71916,
+    "sealed_snapshot_rows": 11986,
+    "sealed_target_matches": 5993,
+    "source_matches": 7524,
+    "source_players": 1002,
+    "source_point_rows": 1280408,
+    "validation_direction_rows": 10830,
+    "validation_feature_rows": 21660,
+    "validation_matches": 1805,
+    "validation_orientation_rows": 3610
+  },
+  "publication_fingerprint": "CEC8DC9438263AE8CF26500C9BE3F67AD80E9BFE2508A873ADEBBC1BEDAA088D",
+  "ranking_contract": {
+    "directions": [
+      "wide",
+      "body",
+      "T"
+    ],
+    "rank_order": "score_descending",
+    "requires_exactly_three": true,
+    "round_before_ordering": false,
+    "tie_break": [
+      "wide",
+      "body",
+      "T"
+    ]
+  },
+  "recommendation_status": "available",
+  "recommendation_statuses": {
+    "abstained_incomparable_scope_orientations": 247,
+    "abstained_insufficient_evidence_orientations": 1068,
+    "available_full_orientations": 2295,
+    "available_global_common": 451,
+    "available_surface_common": 1844,
+    "incomparable_scope_rate": 0.06842105263157895,
+    "insufficient_evidence_rate": 0.29584487534626036,
+    "invalid_input_orientations": 0,
+    "mixed_scope_patterns": {
+      "global / global / surface": 3,
+      "global / surface / global": 52,
+      "global / surface / surface": 24,
+      "surface / global / global": 32,
+      "surface / global / surface": 46,
+      "surface / surface / global": 90
+    },
+    "recommendation_coverage_rate": 0.6357340720221607,
+    "total_abstention_rate": 0.36426592797783935,
+    "total_orientations": 3610
+  },
+  "reconciliations": {
+    "aggregates_reconciled": true,
+    "available_common_scope_only": true,
+    "coverage_reconciled": true,
+    "mixed_excluded_from_rankings": true,
+    "no_individual_recommendations_published": true,
+    "scope_counts_exhaustive": true,
+    "source_matches_exact": true,
+    "source_rows_exact": true,
+    "test_remains_sealed": true,
+    "three_direction_ranks_only": true,
+    "upstream_hashes_exact": true
+  },
+  "scoring_formula": "0.5 * server_selected_rate + 0.5 * opponent_allowed_rate",
+  "selected_policy": "p050_m05_surface_then_global",
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "single_read": true,
+    "source_point_rows": 1280408
+  },
+  "tie_break_contract": {
+    "interpretation": "reproducibility_only_not_tactical_evidence",
+    "order": [
+      "wide",
+      "body",
+      "T"
+    ]
+  },
+  "upstream_artifacts": [
+    "reports/explainable_direction_scoring_summary.json",
+    "reports/tables/explainable_direction_scoring_by_fold.csv",
+    "reports/tables/explainable_direction_scoring_by_direction.csv",
+    "reports/tables/explainable_direction_scoring_calibration.csv",
+    "reports/tables/explainable_direction_scoring_ranking.csv"
+  ],
+  "upstream_commit": "6680ae4",
+  "upstream_hashes": {
+    "reports/explainable_direction_scoring_summary.json": "2AC390152270DB6CDB20AFD2A0B5AC115488183BF5A131FD592F0B1BA07A18A4",
+    "reports/tables/explainable_direction_scoring_by_direction.csv": "367BD35B9FF613AE940AF64EBDCA7556BF48DAFB2D0B83F33FAB706EAE148CCA",
+    "reports/tables/explainable_direction_scoring_by_fold.csv": "622C72683CB7984821F7A7BE759FC065A70FAE6294D84C9C27E58434FD737E37",
+    "reports/tables/explainable_direction_scoring_calibration.csv": "E6CD59A10BD6D94A0CB4281FCA8C6303EA75F2AA83389D1EBC82D1328E0A4038",
+    "reports/tables/explainable_direction_scoring_ranking.csv": "23D4BA434571EE1C69F788470AA7B8991FBEE31806C1DF90E568EFF81F8D31D5"
+  },
+  "validation_metrics": {
+    "folds": {
+      "2020": 168,
+      "2021": 371,
+      "2022": 646,
+      "2023": 620
+    },
+    "target_test_evaluation_runs": 0
+  }
+}

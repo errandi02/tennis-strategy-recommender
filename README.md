@@ -332,6 +332,48 @@ protocolo sellado. La mejora observada frente al scorer poblacional es modesta
 relevancia tactica ni garantiza generalizacion al test sellado, y no genera
 recomendaciones automaticas.
 
+#### Motor explicable de recomendaciones por dirección
+
+El motor transforma el score descriptivo congelado en un orden reproducible de
+`wide`, `body` y `T`, con la misma fórmula `0.5 * server_selected_rate + 0.5 *
+opponent_allowed_rate` y la política `p050_m05_surface_then_global`. La política
+upstream selecciona evidencia por dirección: exige conjuntamente al servidor y
+al rival-restador al menos 50 puntos y 5 partidos, priorizando superficie y
+aplicando fallback global conjunto entre ambos roles cuando procede.
+
+Como barrera conservadora propia del motor, solo se publica un ranking completo
+cuando las tres direcciones puntuables comparten el mismo scope (`surface` o
+`global`). Los scopes mixtos se abstienen, sin recalcular scores ni publicar un
+ranking parcial; esta decisión puede reducir cobertura y no afirma que ambos
+scopes sean estadísticamente incompatibles. El orden es por score descendente y
+los empates se resuelven de forma determinista `wide`, `body`, `T`, únicamente
+para reproducibilidad. Las explicaciones agregan componentes, evidencia y
+códigos deterministas; la tabla individual permanece solo en memoria.
+
+En la ejecución publicada hay 2.295 de 3.610 orientaciones disponibles
+(aprox. 63,57 %): 1.844 con scope común de superficie y 451 con scope global
+común. Se abstienen 1.068 por evidencia insuficiente y 247 por scopes
+incompatibles; exigir un scope común reduce deliberadamente la cobertura y las
+orientaciones con scope mixto no producen ranking. El resultado es descriptivo:
+no implica causalidad, optimalidad táctica ni generalización al test sellado.
+
+```powershell
+python -m src.analysis.explainable_direction_recommender
+```
+
+Artefactos agregados versionables:
+
+- `reports/explainable_direction_recommender_summary.json`
+- `reports/tables/explainable_direction_recommender_coverage.csv`
+- `reports/tables/explainable_direction_recommender_rankings.csv`
+- `reports/tables/explainable_direction_recommender_explanations.csv`
+
+La ejecución publicada cubre los folds 2020--2023 y mantiene sellado el test
+2024--2026: se excluyen 1.531 targets antes de snapshots y features, y registra
+cero recomendaciones, evaluaciones o selección metodológica sobre el test. Los
+rankings son asociaciones históricas descriptivas; no demuestran causalidad,
+optimalidad táctica ni generalización al test sellado.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
