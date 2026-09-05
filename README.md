@@ -58,6 +58,33 @@ El resultado es exclusivamente descriptivo y no estima efectos causales. No
 incluye longitud del intercambio ni lado de servicio, y sus cortes de cobertura
 no son umbrales aprobados para features o modelos.
 
+### Viabilidad descriptiva de dirección del primer saque (P02)
+
+P02 describe la dirección inicial reconocida del primer saque (`wide`, `body`
+y `T`) hasta el 2023-12-31, con el test 2024--2026 sellado y excluido antes de
+la lectura analítica. Incluye también los primeros saques que terminan en
+falta: la dirección representa el intento, mientras que `server_won_point`
+representa el resultado final del punto. Los outcomes inmediatos son solo
+diagnósticos del parser actual.
+
+La publicación actual describe 1.035.760 puntos de desarrollo de 5.993
+partidos y 870 servidores; 1.019.891 puntos tienen dirección inicial reconocida.
+
+```powershell
+python -m src.analysis.first_serve_direction_feasibility
+```
+
+Artefactos versionables generados:
+
+- `reports/first_serve_direction_feasibility_summary.json`
+- `reports/tables/first_serve_direction_feasibility_by_direction.csv`
+- `reports/tables/first_serve_direction_feasibility_outcomes.csv`
+- `reports/tables/first_serve_direction_feasibility_coverage.csv`
+
+La cobertura por servidor es retrospectiva y constituye solo un límite superior
+estructural: no hay perfiles históricos, evidencia conjunta servidor-rival,
+selección de thresholds, scoring, causalidad ni recomendaciones.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
