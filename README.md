@@ -85,6 +85,36 @@ La cobertura por servidor es retrospectiva y constituye solo un límite superior
 estructural: no hay perfiles históricos, evidencia conjunta servidor-rival,
 selección de thresholds, scoring, causalidad ni recomendaciones.
 
+### Viabilidad descriptiva de intención anotada de saque y volea (P03)
+
+P03 cuenta exclusivamente el marcador literal `+` cuando comienza exactamente
+al final del prefijo de servicio. Es una intención anotada: no prueba que el
+servidor llegara a la red ni que realizara una volea. La unidad es el intento
+de saque; el segundo intento solo se construye cuando `second_serve` contiene
+texto sustantivo. El test 2024--2026 queda sellado antes del parser.
+
+La publicación describe 1.426.863 intentos de desarrollo (1.035.760 primeros
+y 391.103 segundos). En 130.981 se observa `+` inmediato; 130.963 de ellos
+tienen dirección conocida y son `positive_tagged`, mientras que 18 con
+dirección `unknown` permanecen fuera del comparador. El parser actual deja los
+rallies no etiquetados como `unknown`, por lo que no hay un grupo
+`not_explicitly_tagged` observable y la comparación de outcomes no está
+disponible. No se comparan etiquetas positivas contra `unknown` o censura.
+
+```powershell
+python -m src.analysis.serve_and_volley_descriptive_feasibility
+```
+
+Artefactos versionables generados:
+
+- `reports/serve_and_volley_descriptive_feasibility_summary.json`
+- `reports/tables/serve_and_volley_descriptive_feasibility_by_state.csv`
+- `reports/tables/serve_and_volley_descriptive_feasibility_by_group.csv`
+- `reports/tables/serve_and_volley_descriptive_feasibility_outcomes.csv`
+
+Es un estudio descriptivo observacional: no fija thresholds, no hace scoring,
+modelos ni recomendaciones, y no establece efectos causales.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo

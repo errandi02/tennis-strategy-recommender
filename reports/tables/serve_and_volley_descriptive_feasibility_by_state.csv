@@ -1,0 +1,10 @@
+analysis_state,reason_code,attempts,matches,servers,explicit_tagged_attempts,eligible_attempts,unknown_attempts,censored_attempts,not_explicitly_tagged_attempts,share_of_attempts,coverage_denominator,coverage_rate
+positive_tagged,explicit_marker_immediately_after_service,130963,5056,690,130963,130963,0,0,0,0.09178386432334429,130963,1.0
+unknown,ambiguous_post_prefix_content,765510,5966,862,0,0,765510,0,0,0.5364985986741544,765510,0.0
+unknown,missing_service_prefix,1404,568,208,0,0,1404,0,0,0.0009839767377807119,1404,0.0
+unknown,unknown_service_direction,449,257,151,18,0,449,0,0,0.00031467632141277753,449,0.0
+ineligible_censored,censored_ace,80249,5936,800,0,0,0,80249,0,0.05624155928074384,80249,0.0
+ineligible_censored,censored_double_fault,34382,5848,830,0,0,0,34382,0,0.024096216665510282,34382,0.0
+ineligible_censored,censored_service_fault,382740,5991,870,0,0,0,382740,0,0.2682387867650924,382740,0.0
+ineligible_censored,censored_special_event,13573,1299,400,0,0,0,13573,0,0.009512475970012538,13573,0.0
+ineligible_censored,censored_unreturned_serve,17593,2634,457,0,0,0,17593,0,0.012329845261948764,17593,0.0

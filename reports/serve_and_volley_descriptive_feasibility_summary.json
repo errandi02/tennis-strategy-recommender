@@ -1,0 +1,231 @@
+{
+  "analysis_name": "serve_and_volley_descriptive_feasibility",
+  "analysis_status": "available_descriptive_not_comparable",
+  "analysis_version": "1.0.0",
+  "artifact_contracts": {
+    "csv_null_representation": "<NULL>",
+    "index": false,
+    "tables": {
+      "by_group": [
+        "dimension",
+        "serve_number",
+        "direction",
+        "surface",
+        "derived_period",
+        "validation_fold",
+        "analysis_state",
+        "attempts",
+        "matches",
+        "servers",
+        "explicit_tagged_attempts",
+        "eligible_attempts",
+        "unknown_attempts",
+        "censored_attempts",
+        "not_explicitly_tagged_attempts",
+        "share_of_attempts",
+        "coverage_denominator",
+        "coverage_rate"
+      ],
+      "by_state": [
+        "analysis_state",
+        "reason_code",
+        "attempts",
+        "matches",
+        "servers",
+        "explicit_tagged_attempts",
+        "eligible_attempts",
+        "unknown_attempts",
+        "censored_attempts",
+        "not_explicitly_tagged_attempts",
+        "share_of_attempts",
+        "coverage_denominator",
+        "coverage_rate"
+      ],
+      "outcomes": [
+        "analysis_state",
+        "attempts",
+        "matches",
+        "servers",
+        "server_point_wins",
+        "server_point_win_rate",
+        "wilson_95_lower",
+        "wilson_95_upper",
+        "difference_vs_not_explicitly_tagged"
+      ]
+    },
+    "timestamps": false,
+    "utf8": true
+  },
+  "artifact_payload_bytes": {
+    "by_group": 7960,
+    "by_state": 1123,
+    "outcomes": 148
+  },
+  "artifact_payload_sha256": {
+    "by_group": "56FD4885DDCFAB063F8B7079CC5582AE5A39C65F582B4DA4780B220ACC652751",
+    "by_state": "616073DB6C3B574B12C515E16EE85C095E685DAAD4A10FE8F1312E249496E3CA",
+    "outcomes": "6CC7BE864E4D4055CC2755A17C1906C46D309D3DACE8783EE02E9713931C67BC"
+  },
+  "classification_contract": {
+    "directions": [
+      "wide",
+      "body",
+      "T",
+      "unknown"
+    ],
+    "extractor_reused": true,
+    "positive_is_explicit_tag_only": true,
+    "states": [
+      "positive_tagged",
+      "not_explicitly_tagged",
+      "unknown",
+      "ineligible_censored"
+    ]
+  },
+  "coverage_summary": {
+    "censored_attempts": 528537,
+    "comparative_attempts": 130963,
+    "comparative_coverage_definition": "attempts_in_positive_tagged_or_not_explicitly_tagged",
+    "comparative_coverage_denominator": 1426863,
+    "comparative_coverage_rate": 0.09178386432334429,
+    "explicit_marker_attempts": 130981,
+    "explicit_marker_censored_attempts": 0,
+    "explicit_marker_positive_tagged_attempts": 130963,
+    "explicit_marker_rate": 0.09179647940972609,
+    "explicit_marker_unknown_attempts": 18,
+    "marker_coverage_definition": "attempts_with_explicit_immediate_marker_observed",
+    "marker_coverage_denominator": 1426863,
+    "marker_coverage_rate": 0.09179647940972609,
+    "marker_determinable_attempts": 130981,
+    "positive_tagged_attempts": 130963,
+    "positive_tagged_rate": 0.09178386432334429,
+    "unknown_attempts": 767363
+  },
+  "definition": {
+    "causal_interpretation": false,
+    "criterion": "marker.start == service_prefix.end",
+    "meaning": "explicitly_annotated_intent",
+    "pattern": "literal_plus_immediately_after_service_prefix",
+    "physical_serve_and_volley_proven": false
+  },
+  "exclusions": {
+    "censored_not_recoded_as_negative": true,
+    "second_serve_non_substantive_not_constructed": true,
+    "unknown_direction_excluded_from_outcome_comparison": true,
+    "unknown_not_recoded_as_negative": true
+  },
+  "fingerprint_contract_version": "1",
+  "methodological_limits": [
+    "La etiqueta + describe intencion anotada, no realizacion fisica de saque y volea.",
+    "El parser actual deja rallies no etiquetados como residuo; no se fabrican negativos desde unknown.",
+    "Los outcomes de faults no se usan como efectividad del intento fallado.",
+    "Analisis descriptivo observacional: sin thresholds, scoring, modelos, recomendaciones ni causalidad.",
+    "El test posterior a 2023 permanece sellado y no se parsea ni evalua."
+  ],
+  "outcome_comparison_status": "not_available:no_observable_untagged_comparator",
+  "outcomes_summary": [],
+  "pattern_id": "P03",
+  "population": {
+    "attempts": 1426863,
+    "development_servers": 870,
+    "development_target_matches": 5993,
+    "development_target_rows": 1035760,
+    "excluded_test_target_matches": 1531,
+    "first_serve_attempts": 1035760,
+    "second_serve_attempts": 391103,
+    "source_matches": 7524,
+    "source_players": 1002,
+    "source_rows_read": 1280408
+  },
+  "publication_fingerprint": "E9D0D50E63A3746866F62526120C417742BBB50F3E32C6A29262103EBF1A94A2",
+  "reason_code_counts": {
+    "ambiguous_post_prefix_content": 765510,
+    "censored_ace": 80249,
+    "censored_double_fault": 34382,
+    "censored_service_fault": 382740,
+    "censored_special_event": 13573,
+    "censored_unreturned_serve": 17593,
+    "explicit_marker_immediately_after_service": 130963,
+    "missing_service_prefix": 1404,
+    "unknown_service_direction": 449
+  },
+  "reconciliations": {
+    "attempt_key_unique": true,
+    "groups_rebuilt_from_attempts": true,
+    "outcomes_not_compared_with_unknown_or_censored": true,
+    "state_reason_reconciled": true,
+    "states_exhaustive": true,
+    "test_attempts_zero": true
+  },
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "first_serve",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "physical_reads": 1
+  },
+  "state_counts": {
+    "ineligible_censored": 528537,
+    "not_explicitly_tagged": 0,
+    "positive_tagged": 130963,
+    "unknown": 767363
+  },
+  "test_seal": {
+    "test_attempts_constructed": 0,
+    "test_evaluation_runs": 0,
+    "test_matches_evaluated": 0,
+    "test_rows_evaluated": 0,
+    "test_status": "sealed",
+    "test_target_rows_parsed": 0,
+    "used_for_method_selection": false
+  },
+  "unit": {
+    "key": [
+      "match_id",
+      "point_number",
+      "serve_number"
+    ],
+    "name": "serve_attempt_within_point",
+    "second_attempt_rule": "only_substantive_second_serve"
+  },
+  "upstream_contracts": {
+    "chronological_binary_sha256_lf": "90890B721CC93C82A5DE5F2EB6E3F3D4E5D4D3E83E6C9E678C5569139301799F",
+    "chronological_canonical_json_sha256": "801627A74D253B0F65C5EC458C7814CCF99491FB171DE2E2A5DA47FFABD13A51",
+    "chronological_commit": "3ac28b4d960e5b2e5e54dd66cb6a8a866f953712",
+    "chronological_publication_fingerprint": "E889A679E08BB16FAF5AB01AA0D63A7623BE0825A0F945626A1D19301C8DFEAD",
+    "extractor_commit": "16d25c0"
+  },
+  "warnings_and_residuals": {
+    "attempts_with_residual": 900980,
+    "attempts_with_warnings": 900980,
+    "explicit_marker_in_censored_attempts": 0,
+    "explicit_marker_in_unknown_attempts": 18,
+    "explicit_marker_with_residual": 130981,
+    "terminal_serve_outcome_counts": {
+      "ace": 80249,
+      "double_fault": 34382,
+      "none": 898326,
+      "service_fault": 382740,
+      "special_event": 13573,
+      "unreturned_serve": 17593
+    },
+    "unknown_by_boundary_residual": 765510,
+    "warning_state_counts": {
+      "W_CONTENT_AFTER_SERVICE_OUTCOME": 2615,
+      "W_DOCUMENTED_TOKEN_NOT_CONSUMED": 10382324,
+      "W_SPECIAL_CODE_WITH_EXTRA_CONTENT": 3,
+      "W_UNDOCUMENTED_SERVE_FAULT_COMBINATION": 40,
+      "W_UNDOCUMENTED_WHITESPACE": 299,
+      "W_UNKNOWN_CHARACTER": 23
+    }
+  }
+}
