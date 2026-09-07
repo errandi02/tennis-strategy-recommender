@@ -1,0 +1,187 @@
+{
+  "analysis_name": "return_depth_descriptive_feasibility",
+  "analysis_status": "available_descriptive",
+  "artifact_contracts": {
+    "by_depth": [
+      "group_type",
+      "serve_number",
+      "depth_code",
+      "depth_description",
+      "attempts",
+      "matches",
+      "servers",
+      "returners",
+      "observed_depth_denominator",
+      "proportion_of_observed_depths",
+      "end_to_end_denominator",
+      "end_to_end_coverage"
+    ],
+    "by_group": [
+      "group_type",
+      "serve_number",
+      "surface",
+      "derived_period",
+      "validation_fold",
+      "attempts",
+      "matches",
+      "servers",
+      "returners",
+      "observed_depth_attempts",
+      "unknown_depth_attempts",
+      "not_documented_attempts",
+      "unknown_initial_attempts",
+      "censored_attempts",
+      "observed_depth_numerator",
+      "observed_depth_denominator",
+      "observed_depth_coverage"
+    ],
+    "by_state": [
+      "group_type",
+      "serve_number",
+      "classification_state",
+      "reason_code",
+      "attempts",
+      "matches",
+      "servers",
+      "returners",
+      "denominator_attempts",
+      "proportion_of_denominator"
+    ],
+    "outcomes": [
+      "group_type",
+      "serve_number",
+      "surface",
+      "derived_period",
+      "validation_fold",
+      "depth_code",
+      "depth_description",
+      "attempts",
+      "matches",
+      "servers",
+      "returners",
+      "returner_point_wins",
+      "returner_point_losses",
+      "returner_point_win_rate",
+      "wilson_95_lower",
+      "wilson_95_upper"
+    ]
+  },
+  "artifact_payload_bytes": {
+    "by_depth": 1210,
+    "by_group": 1854,
+    "by_state": 4356,
+    "outcomes": 6397
+  },
+  "artifact_payload_sha256": {
+    "by_depth": "DE07B44C99873FFEEF963CC5D46C4C3E880109748BEBBC972510BAE2507966AD",
+    "by_group": "8FF83030223E26AA794BB790FF8301F4CFE76CB2CBB68B719E354014A7560A30",
+    "by_state": "E1850F03424CB1EBF26F25E6B297A94199D53C5AD68A0D6D1AA9D2A205F6ABA5",
+    "outcomes": "62AA53002E99FC7AF11F1C0A7A4BA9DF6D4E81706F57CAC0F3A528A2CF3E6384"
+  },
+  "attempts": {
+    "cache_entries": 490548,
+    "first": 1035760,
+    "second": 391103,
+    "total": 1426863
+  },
+  "coverage": {
+    "all_attempts": 1426863,
+    "end_to_end_coverage": 0.4213761237063404,
+    "observed_depth_attempts": 601246,
+    "observed_depth_share": {
+      "7": 0.2652524923242733,
+      "8": 0.4879866144639632,
+      "9": 0.24676089321176356
+    }
+  },
+  "depth_counts": {
+    "7": 159482,
+    "8": 293400,
+    "9": 148364
+  },
+  "fingerprint_contract": {
+    "algorithm": "sha256",
+    "serialization": "utf-8_deterministic"
+  },
+  "methodological_limits": [
+    "Analisis descriptivo y no causal.",
+    "Los outcomes se condicionan a restos con profundidad documentada 7/8/9.",
+    "La observabilidad y la censura pueden sesgar las tasas descriptivas.",
+    "El test posterior a 2023 permanece sellado y no se clasifica."
+  ],
+  "outcomes_status": "available_descriptive",
+  "population": {
+    "development_matches": 5993,
+    "development_point_rows": 1035760,
+    "development_servers": 870,
+    "excluded_test_target_matches": 1531,
+    "source_matches": 7524,
+    "source_players": 1002,
+    "source_rows_read": 1280408
+  },
+  "publication_fingerprint": "96333493F586D2F65183A12F6443ACF7F1DC2D2999B96C58AC6C07B27DD1C06B",
+  "reason_codes": [
+    "ambiguous_post_service_boundary",
+    "censored_ace",
+    "censored_double_fault",
+    "censored_service_fault",
+    "censored_unreturned_serve",
+    "documented_depth_7",
+    "documented_depth_8",
+    "documented_depth_9",
+    "missing_service_prefix",
+    "no_documented_depth_after_lateral_direction",
+    "special_event_before_return",
+    "truncated_return_event",
+    "unknown_return_shot_type",
+    "unsupported_initial_modifier"
+  ],
+  "reconciliations": {
+    "attempt_key_unique": true,
+    "coverage_reconciled": true,
+    "groups_reconciled": true,
+    "observed_equals_depth_sum": true,
+    "outcomes_reconciled": true,
+    "states_exhaustive_exclusive": true,
+    "test_sealed": true
+  },
+  "source": {
+    "columns": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "first_serve",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "reads": 1
+  },
+  "state_counts": {
+    "ineligible_censored": 528537,
+    "return_depth_not_documented": 229225,
+    "return_depth_observed": 601246,
+    "return_depth_unknown": 0,
+    "unknown_initial_return": 67855
+  },
+  "test_seal": {
+    "excluded_test_target_matches": 1531,
+    "test_attempts_constructed": 0,
+    "test_evaluation_runs": 0,
+    "test_matches_evaluated": 0,
+    "test_outcomes_computed": 0,
+    "test_recommendations_generated": 0,
+    "test_returns_classified": 0,
+    "test_rows_evaluated": 0,
+    "test_scores_computed": 0,
+    "test_status": "sealed",
+    "test_target_rows_parsed": 0,
+    "used_for_method_selection": false
+  },
+  "upstream_commit": "33ee946",
+  "version": "1.0.0"
+}

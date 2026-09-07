@@ -151,6 +151,36 @@ observacional, condicionado a retornos documentados; no selecciona thresholds,
 perfiles, modelos, scoring ni recomendaciones, y no permite afirmaciones
 causales.
 
+### Viabilidad descriptiva de profundidad documentada del primer resto (P05)
+
+P05 mide únicamente la profundidad documentada del primer resto: `7` dentro de
+los cuadros de saque; `8` tras la línea de saque, más cerca de ella que de la
+línea de fondo; `9` más cerca de la línea de fondo que de la línea de saque; y
+`0` profundidad desconocida. No emplea etiquetas espaciales alternativas.
+
+En desarrollo hasta 2023 publica 1.035.760 puntos de 5.993 partidos y 870
+servidores: 1.426.863 intentos (1.035.760 primeros y 391.103 segundos). Hay
+601.246 profundidades observadas `7`/`8`/`9`, una cobertura end-to-end del
+42,14 %. Los outcomes son tasas descriptivas condicionadas exclusivamente a
+esa profundidad observada, con intervalos Wilson; pueden sufrir sesgo de
+observabilidad y censura y no implican causalidad.
+
+```powershell
+python -m src.analysis.return_depth_descriptive_feasibility
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_depth_descriptive_feasibility_summary.json`
+- `reports/tables/return_depth_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_depth_descriptive_feasibility_by_depth.csv`
+- `reports/tables/return_depth_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_depth_descriptive_feasibility_outcomes.csv`
+
+El test 2024--2026 permanece sellado: 1.531 partidos se excluyen antes de
+construir intentos; no se seleccionan thresholds, perfiles, modelos, scoring
+ni recomendaciones.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
