@@ -1,0 +1,234 @@
+{
+  "ambiguous_initial_return_share": {
+    "denominator": 1426863,
+    "numerator": 45053,
+    "proportion": 0.03157486037552309
+  },
+  "analysis_name": "return_direction_descriptive_feasibility",
+  "analysis_status": "available_descriptive",
+  "analysis_version": "1.0.0",
+  "artifact_contracts": {
+    "csv_index": false,
+    "fixed_order": true,
+    "no_raw_sequences": true,
+    "utf8": true
+  },
+  "censoring_summary": {
+    "ace": {
+      "denominator": 1426863,
+      "numerator": 80249,
+      "proportion": 0.05624155928074384
+    },
+    "service_fault": {
+      "denominator": 1426863,
+      "numerator": 417122,
+      "proportion": 0.29233500343060265
+    },
+    "special_or_incomplete": {
+      "denominator": 1426863,
+      "numerator": 13573,
+      "proportion": 0.009512475970012538
+    },
+    "unreturned_serve": {
+      "denominator": 1426863,
+      "numerator": 17593,
+      "proportion": 0.012329845261948764
+    }
+  },
+  "classification_contract": {
+    "cache_key": [
+      "sequence_text",
+      "serve_number",
+      "previous_attempt_was_fault"
+    ],
+    "eligible_state": "return_direction_observed",
+    "states": [
+      "return_direction_observed",
+      "return_direction_unknown",
+      "unknown_initial_return",
+      "ace",
+      "unreturned_serve",
+      "service_fault",
+      "special_or_incomplete"
+    ],
+    "unknown_and_censored_excluded_from_outcomes": true
+  },
+  "definition": {
+    "depth_is_separate_dimension": true,
+    "lateral_codes": {
+      "0": "unknown",
+      "1": "right_side_of_right_handed_opponent_or_left_of_left_handed",
+      "2": "centre",
+      "3": "left_side_of_right_handed_opponent_or_right_of_left_handed"
+    },
+    "name": "documented_lateral_direction_of_initial_return",
+    "not_crosscourt_or_parallel": true,
+    "pattern_id": "P04"
+  },
+  "direction_counts": {
+    "0": 0,
+    "1": 151677,
+    "2": 429090,
+    "3": 249704
+  },
+  "direction_unknown_summary": {
+    "denominator": 853273,
+    "numerator": 22802,
+    "proportion": 0.026722983148417916
+  },
+  "end_to_end_directional_coverage": {
+    "denominator": 1426863,
+    "numerator": 830471,
+    "proportion": 0.5820257445879528
+  },
+  "event_localization_coverage": {
+    "denominator": 853273,
+    "numerator": 853273,
+    "proportion": 1.0
+  },
+  "exclusions": {
+    "non_substantive_first_or_second_serves_do_not_create_attempts": true
+  },
+  "fingerprint_contract_version": "1",
+  "lateral_direction_coverage": {
+    "denominator": 853273,
+    "numerator": 830471,
+    "proportion": 0.9732770168515821
+  },
+  "methodological_limits": [
+    "Analisis descriptivo y observacional, condicionado a devoluciones observables.",
+    "Ace, saque no devuelto y faults censuran oportunidades; no son categorias de retorno.",
+    "Puede existir confusion por calidad y direccion del saque, servidor, restador, superficie y periodo.",
+    "1/2/3 no significa cruzado, paralelo, izquierda o derecha universal; profundidad es separada.",
+    "No se seleccionan thresholds, perfiles, modelos, scoring ni recomendaciones; test 2024-2026 sellado."
+  ],
+  "opportunity_coverage": {
+    "denominator": 1426863,
+    "numerator": 853273,
+    "proportion": 0.5980062556811692
+  },
+  "outcomes_summary": {
+    "eligible_attempts": 830471,
+    "observational_only": true,
+    "outcome_rows": 27,
+    "wilson_z": 1.959963984540054
+  },
+  "population": {
+    "development_matches": 5993,
+    "development_point_rows": 1035760,
+    "development_servers": 870,
+    "excluded_test_target_matches": 1531,
+    "source_matches": 7524,
+    "source_players": 1002,
+    "source_rows_read": 1280408
+  },
+  "publication_fingerprint": "8C1B1C524F3E24DEC9086AAFA36784BDBAD4BAA71447735F772906769906BC1A",
+  "reason_code_counts": {
+    "ambiguous_post_service_boundary": 41773,
+    "censored_ace": 80249,
+    "censored_double_fault": 34382,
+    "censored_service_fault": 382740,
+    "censored_unreturned_serve": 17593,
+    "challenge_or_penalty_before_return": 13551,
+    "localized_return_without_direction": 22802,
+    "missing_service_prefix": 1404,
+    "observed_lateral_direction_1": 151677,
+    "observed_lateral_direction_2": 429090,
+    "observed_lateral_direction_3": 249704,
+    "special_event_before_return": 22,
+    "truncated_return_event": 26,
+    "unknown_return_shot_type": 1691,
+    "unsupported_initial_modifier": 159
+  },
+  "reconciliations": {
+    "attempt_key_unique": true,
+    "eligible_reconciled": true,
+    "events_reconciled": true,
+    "first_second_exhaustive": true,
+    "fold_groups_reconcile": true,
+    "lateral_eligible_exact": true,
+    "opportunities_reconciled": true,
+    "outcomes_only_eligible": true,
+    "outcomes_wins_reconcile": true,
+    "period_groups_reconcile": true,
+    "reasons_exhaustive": true,
+    "states_exhaustive": true,
+    "surface_groups_reconcile": true
+  },
+  "return_depth_summary": {
+    "0": 0,
+    "7": 159482,
+    "8": 293400,
+    "9": 148364,
+    "absent": 825617
+  },
+  "shot_type_summary": {
+    "b": 372016,
+    "f": 320008,
+    "h": 4,
+    "i": 1,
+    "l": 964,
+    "m": 2742,
+    "o": 5,
+    "r": 37413,
+    "s": 119546,
+    "t": 16,
+    "u": 98,
+    "v": 21,
+    "y": 436,
+    "z": 3
+  },
+  "source": {
+    "columns_used": [
+      "match_id",
+      "point_number",
+      "date",
+      "surface",
+      "server",
+      "point_winner",
+      "player_1",
+      "player_2",
+      "first_serve",
+      "second_serve"
+    ],
+    "path": "data/processed/points_enriched.parquet",
+    "published_reports_used_as_analytical_source": false,
+    "single_parquet_read_per_execution": true
+  },
+  "state_counts": {
+    "ace": 80249,
+    "return_direction_observed": 830471,
+    "return_direction_unknown": 22802,
+    "service_fault": 417122,
+    "special_or_incomplete": 13573,
+    "unknown_initial_return": 45053,
+    "unreturned_serve": 17593
+  },
+  "test_seal": {
+    "test_attempts_constructed": 0,
+    "test_evaluation_runs": 0,
+    "test_matches_evaluated": 0,
+    "test_outcomes_computed": 0,
+    "test_recommendations_generated": 0,
+    "test_returns_classified": 0,
+    "test_rows_evaluated": 0,
+    "test_scores_computed": 0,
+    "test_status": "sealed",
+    "test_target_rows_parsed": 0,
+    "used_for_method_selection": false
+  },
+  "unit": {
+    "key": [
+      "match_id",
+      "point_number",
+      "serve_number"
+    ],
+    "name": "return_opportunity_per_substantive_serve_attempt",
+    "second_serve_only_when_substantive": true
+  },
+  "upstream_contracts": {
+    "chronological_validation": "validated",
+    "classification_contract_version": "1.0.0",
+    "extractor": "return_direction_feasibility"
+  }
+}

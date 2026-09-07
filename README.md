@@ -115,6 +115,42 @@ Artefactos versionables generados:
 Es un estudio descriptivo observacional: no fija thresholds, no hace scoring,
 modelos ni recomendaciones, y no establece efectos causales.
 
+### Viabilidad descriptiva de dirección lateral del primer resto (P04)
+
+P04 observa únicamente la dirección lateral documentada del primer evento de
+resto localizado inmediatamente tras un saque entrado. Los códigos `1`, `2` y
+`3` indican, respectivamente, lado de derecha de un diestro/revés de un zurdo,
+zona central y lado de revés de un diestro/derecha de un zurdo; `0` indica
+dirección lateral desconocida. No significan cruzado, paralelo, izquierda o
+derecha universal, ni las direcciones de saque wide/body/T. La profundidad
+`7/8/9/0` se conserva como diagnóstico separado.
+
+La unidad es el intento de saque sustantivo; el segundo solo existe cuando
+`second_serve` contiene texto sustantivo. En desarrollo hasta 2023 se publican
+1.426.863 intentos, de los que 830.471 contienen dirección lateral `1/2/3`
+(cobertura end-to-end aproximada del 58,20 %); las tres categorías aparecen.
+Los outcomes son tasas observacionales del punto
+ganado por el restador, con intervalos Wilson, solo entre esas direcciones
+observadas: no incluyen unknown ni censura.
+
+```powershell
+python -m src.analysis.return_direction_descriptive_feasibility
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_direction_descriptive_feasibility_summary.json`
+- `reports/tables/return_direction_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_direction_descriptive_feasibility_by_direction.csv`
+- `reports/tables/return_direction_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_direction_descriptive_feasibility_outcomes.csv`
+
+El test 2024--2026 permanece sellado: sus 1.531 partidos se excluyen antes de
+construir intentos o llamar al extractor. Es un estudio descriptivo
+observacional, condicionado a retornos documentados; no selecciona thresholds,
+perfiles, modelos, scoring ni recomendaciones, y no permite afirmaciones
+causales.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
