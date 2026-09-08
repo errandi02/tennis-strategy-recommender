@@ -181,6 +181,37 @@ El test 2024--2026 permanece sellado: 1.531 partidos se excluyen antes de
 construir intentos; no se seleccionan thresholds, perfiles, modelos, scoring
 ni recomendaciones.
 
+### Viabilidad descriptiva del tipo documentado del primer resto (P06)
+
+P06 conserva únicamente el código literal del primer golpe de resto documentado:
+17 códigos (`f`, `b`, `r`, `s`, `v`, `z`, `o`, `p`, `u`, `y`, `l`, `m`, `h`,
+`i`, `j`, `k`, `t`) como resultado primario, y nueve familias preespecificadas
+como agregado secundario. `q` permanece como tipo desconocido no comparable;
+`t` no representa una técnica homogénea.
+
+En desarrollo hasta 2023 publica 1.035.760 puntos de 5.993 partidos y 870
+servidores: 1.426.863 intentos (1.035.760 primeros y 391.103 segundos). Hay
+881.717 tipos documentados, con cobertura end-to-end del 61,79 %. Los outcomes
+son tasas descriptivas condicionadas a tipo documentado, con intervalos Wilson;
+pueden sufrir sesgo de observabilidad y censura y no implican causalidad.
+
+```powershell
+$performanceLog = Join-Path (Split-Path (Get-Location) -Parent) 'p06-performance.json'
+python -m src.analysis.return_shot_type_descriptive_feasibility --performance-log $performanceLog
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_shot_type_descriptive_feasibility_summary.json`
+- `reports/tables/return_shot_type_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_shot_type_descriptive_feasibility_by_type.csv`
+- `reports/tables/return_shot_type_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_shot_type_descriptive_feasibility_outcomes.csv`
+
+El test 2024--2026 permanece sellado: 1.531 partidos se excluyen antes de
+construir intentos o llamar al extractor. P06 no fija thresholds, perfiles,
+modelos, scoring ni recomendaciones.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo

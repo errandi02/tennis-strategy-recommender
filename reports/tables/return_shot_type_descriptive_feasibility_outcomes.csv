@@ -1,0 +1,365 @@
+aggregation_level,group_type,serve_number,surface,derived_period,validation_fold,shot_type_code,shot_type_description,shot_type_family,attempts,matches,servers,returners,returner_wins,returner_losses,returner_win_rate,wilson_95_lower,wilson_95_upper
+code,total,0,ALL,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,329542,5993,870,869,127122,202420,0.385753561002846,0.384092947903026,0.387416837604588
+code,total,0,ALL,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,384349,5993,866,868,154936,229413,0.403112795922456,0.401563011544036,0.404664517001556
+code,total,0,ALL,ALL,ALL,r,slice de derecha,slice,38305,4997,697,728,11106,27199,0.289936039681504,0.285413472733411,0.294500735392699
+code,total,0,ALL,ALL,ALL,s,slice de revés,slice,124944,5876,827,825,37639,87305,0.30124695863747,0.298709121632204,0.303797016768206
+code,total,0,ALL,ALL,ALL,v,volea de derecha,volley,22,22,18,19,6,16,0.272727272727273,0.131507602879895,0.481517340124024
+code,total,0,ALL,ALL,ALL,z,volea de revés,volley,3,3,3,3,1,2,0.333333333333333,0.0614919447203962,0.792340399197952
+code,total,0,ALL,ALL,ALL,o,remate estándar,overhead,5,5,5,5,2,3,0.4,0.117620774232648,0.769275718723987
+code,total,0,ALL,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,total,0,ALL,ALL,ALL,u,dejada de derecha,drop_shot,113,89,67,57,47,66,0.415929203539823,0.329280448966939,0.508106038742381
+code,total,0,ALL,ALL,ALL,y,dejada de revés,drop_shot,544,407,174,141,237,307,0.435661764705882,0.394589711082288,0.477636096452095
+code,total,0,ALL,ALL,ALL,l,globo de derecha,lob,993,692,255,266,186,807,0.187311178247734,0.164265936128535,0.212766394835438
+code,total,0,ALL,ALL,ALL,m,globo de revés,lob,2827,1499,372,394,483,2344,0.170852493809692,0.157427050883853,0.185171244686088
+code,total,0,ALL,ALL,ALL,h,media volea de derecha,half_volley,14,12,11,6,5,9,0.357142857142857,0.163447317535541,0.612355768960926
+code,total,0,ALL,ALL,ALL,i,media volea de revés,half_volley,38,18,17,3,20,18,0.526315789473684,0.372589713844967,0.675209766774739
+code,total,0,ALL,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,total,0,ALL,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,total,0,ALL,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,18,16,14,12,5,13,0.277777777777778,0.12499753379554,0.508726565602975
+code,serve_number,1,ALL,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,205938,5992,868,866,71549,134389,0.347429808971632,0.345376180207612,0.349489129557207
+code,serve_number,2,ALL,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,123604,5991,860,858,55573,68031,0.449605190770525,0.446833577487977,0.4523799363719
+code,serve_number,1,ALL,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,193824,5990,861,863,69396,124428,0.358036156513125,0.355904652136952,0.360173288029906
+code,serve_number,2,ALL,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,190525,5992,852,859,85540,104985,0.448969951449941,0.446737592968197,0.451204367676104
+code,serve_number,1,ALL,ALL,ALL,r,slice de derecha,slice,33916,4780,679,705,9593,24323,0.28284585446397,0.278077440368751,0.287663454444024
+code,serve_number,2,ALL,ALL,ALL,r,slice de derecha,slice,4389,2109,419,452,1513,2876,0.344725449988608,0.330805811816914,0.358916657619552
+code,serve_number,1,ALL,ALL,ALL,s,slice de revés,slice,94388,5855,824,821,24989,69399,0.264747637411535,0.261942605293402,0.267571817630805
+code,serve_number,2,ALL,ALL,ALL,s,slice de revés,slice,30556,3555,571,545,12650,17906,0.413993978269407,0.408482471283781,0.419527107657182
+code,serve_number,1,ALL,ALL,ALL,v,volea de derecha,volley,16,16,13,15,4,12,0.25,0.10182067491213,0.494983165355088
+code,serve_number,2,ALL,ALL,ALL,v,volea de derecha,volley,6,6,5,6,2,4,0.333333333333333,0.0967714111057804,0.700006684861608
+code,serve_number,1,ALL,ALL,ALL,z,volea de revés,volley,3,3,3,3,1,2,0.333333333333333,0.0614919447203962,0.792340399197952
+code,serve_number,2,ALL,ALL,ALL,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,serve_number,1,ALL,ALL,ALL,o,remate estándar,overhead,4,4,4,4,1,3,0.25,0.0455872608097005,0.699358157417598
+code,serve_number,2,ALL,ALL,ALL,o,remate estándar,overhead,1,1,1,1,1,0,1,0.206549314377237,1
+code,serve_number,1,ALL,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,serve_number,2,ALL,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,serve_number,1,ALL,ALL,ALL,u,dejada de derecha,drop_shot,28,28,23,24,11,17,0.392857142857143,0.235656865415796,0.575909557034028
+code,serve_number,2,ALL,ALL,ALL,u,dejada de derecha,drop_shot,85,63,54,42,36,49,0.423529411764706,0.32403542312879,0.529636497925124
+code,serve_number,1,ALL,ALL,ALL,y,dejada de revés,drop_shot,161,134,78,79,61,100,0.37888198757764,0.307595829093233,0.455813204780811
+code,serve_number,2,ALL,ALL,ALL,y,dejada de revés,drop_shot,383,300,142,99,176,207,0.459530026109661,0.41026826699715,0.50959554466744
+code,serve_number,1,ALL,ALL,ALL,l,globo de derecha,lob,904,637,247,254,163,741,0.180309734513274,0.156617999012816,0.206706957801962
+code,serve_number,2,ALL,ALL,ALL,l,globo de derecha,lob,89,83,62,70,23,66,0.258426966292135,0.178815434861304,0.35802941283711
+code,serve_number,1,ALL,ALL,ALL,m,globo de revés,lob,2650,1443,365,382,445,2205,0.167924528301887,0.15417547063981,0.182634950287858
+code,serve_number,2,ALL,ALL,ALL,m,globo de revés,lob,177,154,81,113,38,139,0.214689265536723,0.160599164003644,0.280900585784692
+code,serve_number,1,ALL,ALL,ALL,h,media volea de derecha,half_volley,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,serve_number,2,ALL,ALL,ALL,h,media volea de derecha,half_volley,12,10,9,4,4,8,0.333333333333333,0.138120091091213,0.6093779111272
+code,serve_number,1,ALL,ALL,ALL,i,media volea de revés,half_volley,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,serve_number,2,ALL,ALL,ALL,i,media volea de revés,half_volley,36,16,15,1,19,17,0.527777777777778,0.370059380229876,0.680139584848209
+code,serve_number,1,ALL,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,serve_number,2,ALL,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,serve_number,1,ALL,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,serve_number,2,ALL,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,serve_number,1,ALL,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,13,11,10,9,2,11,0.153846153846154,0.0432581783580812,0.422346310194825
+code,serve_number,2,ALL,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,5,5,5,5,3,2,0.6,0.230724281276013,0.882379225767352
+code,surface,0,Clay,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,81683,1439,499,499,33540,48143,0.41061175519998,0.407242396020304,0.413989521639757
+code,surface,0,Grass,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,43037,705,316,316,15272,27765,0.35485744824221,0.350350133181228,0.359390671678438
+code,surface,0,Hard,ALL,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,204822,3849,643,642,78310,126512,0.382331976057259,0.380229659167054,0.384438706617784
+code,surface,0,Clay,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,103753,1439,497,494,42216,61537,0.406889439341513,0.403903748082588,0.409882025189354
+code,surface,0,Grass,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,48057,705,315,315,18406,29651,0.383003516657303,0.378666803888768,0.387358932268288
+code,surface,0,Hard,ALL,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,232539,3849,639,642,94314,138225,0.405583579528595,0.403589498689873,0.407580779764921
+code,surface,0,Clay,ALL,ALL,r,slice de derecha,slice,6126,1127,369,393,1725,4401,0.281586679725759,0.270463285459761,0.292983825207466
+code,surface,0,Grass,ALL,ALL,r,slice de derecha,slice,6184,572,240,249,1931,4253,0.3122574385511,0.300826969066027,0.323921012042956
+code,surface,0,Hard,ALL,ALL,r,slice de derecha,slice,25995,3298,542,558,7450,18545,0.286593575687632,0.281128686769098,0.29212152833863
+code,surface,0,Clay,ALL,ALL,s,slice de revés,slice,21733,1394,462,456,6543,15190,0.301062899737726,0.294999813607674,0.307196300469834
+code,surface,0,Grass,ALL,ALL,s,slice de revés,slice,21002,701,313,306,6072,14930,0.289115322350252,0.283023022761385,0.295284753322473
+code,surface,0,Hard,ALL,ALL,s,slice de revés,slice,82209,3781,623,625,25024,57185,0.304394895935968,0.301258604769279,0.307549466703242
+code,surface,0,Clay,ALL,ALL,v,volea de derecha,volley,5,5,5,5,2,3,0.4,0.117620774232648,0.769275718723987
+code,surface,0,Grass,ALL,ALL,v,volea de derecha,volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,surface,0,Hard,ALL,ALL,v,volea de derecha,volley,16,16,14,13,4,12,0.25,0.10182067491213,0.494983165355088
+code,surface,0,Clay,ALL,ALL,z,volea de revés,volley,1,1,1,1,1,0,1,0.206549314377237,1
+code,surface,0,Grass,ALL,ALL,z,volea de revés,volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,surface,0,Hard,ALL,ALL,z,volea de revés,volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,surface,0,Clay,ALL,ALL,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,surface,0,Grass,ALL,ALL,o,remate estándar,overhead,1,1,1,1,0,1,0,0,0.793450685622763
+code,surface,0,Hard,ALL,ALL,o,remate estándar,overhead,4,4,4,4,2,2,0.5,0.150038989152149,0.849961010847851
+code,surface,0,Clay,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,surface,0,Grass,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,surface,0,Hard,ALL,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,surface,0,Clay,ALL,ALL,u,dejada de derecha,drop_shot,50,34,31,26,22,28,0.44,0.311621992112572,0.576939719783432
+code,surface,0,Grass,ALL,ALL,u,dejada de derecha,drop_shot,14,10,10,8,5,9,0.357142857142857,0.163447317535541,0.612355768960926
+code,surface,0,Hard,ALL,ALL,u,dejada de derecha,drop_shot,49,45,34,36,20,29,0.408163265306122,0.282152385203869,0.547526806081529
+code,surface,0,Clay,ALL,ALL,y,dejada de revés,drop_shot,218,154,94,72,100,118,0.458715596330275,0.393855674690215,0.525005298837061
+code,surface,0,Grass,ALL,ALL,y,dejada de revés,drop_shot,63,52,42,34,33,30,0.523809523809524,0.402703564367372,0.64217875946173
+code,surface,0,Hard,ALL,ALL,y,dejada de revés,drop_shot,263,201,103,85,104,159,0.395437262357414,0.338257992850876,0.455627109400204
+code,surface,0,Clay,ALL,ALL,l,globo de derecha,lob,301,190,124,120,68,233,0.225913621262458,0.182296965132824,0.276438074916135
+code,surface,0,Grass,ALL,ALL,l,globo de derecha,lob,150,112,74,73,26,124,0.173333333333333,0.121120632263873,0.241859927389937
+code,surface,0,Hard,ALL,ALL,l,globo de derecha,lob,542,390,180,178,92,450,0.169741697416974,0.140487177753776,0.203644723158498
+code,surface,0,Clay,ALL,ALL,m,globo de revés,lob,752,378,197,197,140,612,0.186170212765957,0.159969942113524,0.215560475685414
+code,surface,0,Grass,ALL,ALL,m,globo de revés,lob,427,215,125,133,62,365,0.14519906323185,0.114946211607043,0.181778850949897
+code,surface,0,Hard,ALL,ALL,m,globo de revés,lob,1648,906,268,287,281,1367,0.170509708737864,0.153123669752629,0.189428247563133
+code,surface,0,Clay,ALL,ALL,h,media volea de derecha,half_volley,2,2,2,2,0,2,0,0,0.657619772493347
+code,surface,0,Grass,ALL,ALL,h,media volea de derecha,half_volley,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,surface,0,Hard,ALL,ALL,h,media volea de derecha,half_volley,10,8,7,3,4,6,0.4,0.168180329706236,0.687326230266342
+code,surface,0,Clay,ALL,ALL,i,media volea de revés,half_volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,surface,0,Grass,ALL,ALL,i,media volea de revés,half_volley,2,2,2,1,1,1,0.5,0.0945312057342307,0.905468794265769
+code,surface,0,Hard,ALL,ALL,i,media volea de revés,half_volley,35,15,15,2,19,16,0.542857142857143,0.381897250684837,0.695339807115928
+code,surface,0,Clay,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Grass,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Hard,ALL,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Clay,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Grass,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Hard,ALL,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,surface,0,Clay,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,surface,0,Grass,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,4,4,4,3,0,4,0,0,0.489890836454597
+code,surface,0,Hard,ALL,ALL,t,"golpe especial, incluido trick shot o tweener",special,12,10,9,9,4,8,0.333333333333333,0.138120091091213,0.6093779111272
+code,derived_period,0,ALL,2010s,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,115294,2232,412,411,44175,71119,0.383150901174389,0.380348635068174,0.385960953566899
+code,derived_period,0,ALL,2020s,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,97950,1805,332,332,38534,59416,0.393404798366514,0.390349784339609,0.396468173088037
+code,derived_period,0,ALL,to_2009,ALL,f,"derecha, excluidos slices y golpes especiales",groundstroke,116298,1956,357,357,44413,71885,0.381889628368502,0.379101261130115,0.384685797996313
+code,derived_period,0,ALL,2010s,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,135860,2232,410,412,54682,81178,0.402487855145002,0.399882981162305,0.405098243308441
+code,derived_period,0,ALL,2020s,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,118146,1805,331,332,48053,70093,0.40672557682867,0.403927627432157,0.409529591571546
+code,derived_period,0,ALL,to_2009,ALL,b,"revés, excluidos slices y golpes especiales",groundstroke,130343,1956,354,355,52201,78142,0.400489477762519,0.397832346605542,0.403152474279471
+code,derived_period,0,ALL,2010s,ALL,r,slice de derecha,slice,14014,1919,347,360,3999,10015,0.285357499643214,0.277940479898281,0.292892160942122
+code,derived_period,0,ALL,2020s,ALL,r,slice de derecha,slice,14535,1614,296,294,4225,10310,0.290677674578603,0.283351848723683,0.298114114899695
+code,derived_period,0,ALL,to_2009,ALL,r,slice de derecha,slice,9756,1464,253,273,2882,6874,0.295407954079541,0.286436912387033,0.304540050011046
+code,derived_period,0,ALL,2010s,ALL,s,slice de revés,slice,40861,2190,387,388,11935,28926,0.292087809892073,0.287698519317441,0.296516189624432
+code,derived_period,0,ALL,2020s,ALL,s,slice de revés,slice,22909,1735,309,306,5786,17123,0.252564494303549,0.246980059708076,0.25823189663636
+code,derived_period,0,ALL,to_2009,ALL,s,slice de revés,slice,61174,1951,352,353,19918,41256,0.325595841370517,0.321893557378968,0.329320027618751
+code,derived_period,0,ALL,2010s,ALL,v,volea de derecha,volley,7,7,6,7,4,3,0.571428571428571,0.250458364527657,0.84178014474853
+code,derived_period,0,ALL,2020s,ALL,v,volea de derecha,volley,6,6,5,5,0,6,0,0,0.390334287902165
+code,derived_period,0,ALL,to_2009,ALL,v,volea de derecha,volley,9,9,8,9,2,7,0.222222222222222,0.0632251071178467,0.547411030893011
+code,derived_period,0,ALL,2010s,ALL,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2020s,ALL,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,z,volea de revés,volley,3,3,3,3,1,2,0.333333333333333,0.0614919447203962,0.792340399197952
+code,derived_period,0,ALL,2010s,ALL,o,remate estándar,overhead,4,4,4,4,1,3,0.25,0.0455872608097005,0.699358157417598
+code,derived_period,0,ALL,2020s,ALL,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,o,remate estándar,overhead,1,1,1,1,1,0,1,0.206549314377237,1
+code,derived_period,0,ALL,2010s,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2020s,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2010s,ALL,u,dejada de derecha,drop_shot,41,36,27,24,12,29,0.292682926829268,0.176091876261134,0.444794677229972
+code,derived_period,0,ALL,2020s,ALL,u,dejada de derecha,drop_shot,23,22,19,15,9,14,0.391304347826087,0.22157622792478,0.592144776086183
+code,derived_period,0,ALL,to_2009,ALL,u,dejada de derecha,drop_shot,49,31,24,22,26,23,0.530612244897959,0.393808639836619,0.662964963068248
+code,derived_period,0,ALL,2010s,ALL,y,dejada de revés,drop_shot,226,171,87,68,99,127,0.438053097345133,0.374937733872651,0.5032391618725
+code,derived_period,0,ALL,2020s,ALL,y,dejada de revés,drop_shot,79,67,46,39,31,48,0.392405063291139,0.292128650575367,0.502660091172945
+code,derived_period,0,ALL,to_2009,ALL,y,dejada de revés,drop_shot,239,169,76,56,107,132,0.447698744769874,0.385979211206615,0.511072963815694
+code,derived_period,0,ALL,2010s,ALL,l,globo de derecha,lob,277,213,106,107,55,222,0.1985559566787,0.15584266080156,0.249515790542254
+code,derived_period,0,ALL,2020s,ALL,l,globo de derecha,lob,517,308,146,139,85,432,0.164410058027079,0.134957684180162,0.198812709625107
+code,derived_period,0,ALL,to_2009,ALL,l,globo de derecha,lob,199,171,63,78,46,153,0.231155778894472,0.178009096827636,0.29448532999176
+code,derived_period,0,ALL,2010s,ALL,m,globo de revés,lob,856,492,157,176,153,703,0.178738317757009,0.154524650574828,0.205822545576487
+code,derived_period,0,ALL,2020s,ALL,m,globo de revés,lob,1320,594,203,195,216,1104,0.163636363636364,0.144660341725332,0.184564472860057
+code,derived_period,0,ALL,to_2009,ALL,m,globo de revés,lob,651,413,116,133,114,537,0.175115207373272,0.147848980280074,0.206193140446701
+code,derived_period,0,ALL,2010s,ALL,h,media volea de derecha,half_volley,13,11,10,5,5,8,0.384615384615385,0.177097077977626,0.644771084873343
+code,derived_period,0,ALL,2020s,ALL,h,media volea de derecha,half_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,h,media volea de derecha,half_volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,derived_period,0,ALL,2010s,ALL,i,media volea de revés,half_volley,38,18,17,3,20,18,0.526315789473684,0.372589713844967,0.675209766774739
+code,derived_period,0,ALL,2020s,ALL,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2010s,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2020s,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2010s,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2020s,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,to_2009,ALL,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,derived_period,0,ALL,2010s,ALL,t,"golpe especial, incluido trick shot o tweener",special,11,10,9,7,3,8,0.272727272727273,0.0974605929002489,0.565645301176129
+code,derived_period,0,ALL,2020s,ALL,t,"golpe especial, incluido trick shot o tweener",special,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,derived_period,0,ALL,to_2009,ALL,t,"golpe especial, incluido trick shot o tweener",special,5,4,4,4,1,4,0.2,0.0362241086324301,0.624465370237475
+code,validation_fold,0,ALL,ALL,pre_validation,f,"derecha, excluidos slices y golpes especiales",groundstroke,231592,4188,709,708,88588,143004,0.38251753083008,0.38054013717814,0.384498821823741
+code,validation_fold,0,ALL,ALL,validation_2020,f,"derecha, excluidos slices y golpes especiales",groundstroke,9968,168,113,113,3813,6155,0.382524077046549,0.373030291755037,0.392108372986934
+code,validation_fold,0,ALL,ALL,validation_2021,f,"derecha, excluidos slices y golpes especiales",groundstroke,20167,371,166,166,7817,12350,0.387613427877225,0.380911252341327,0.394358410589977
+code,validation_fold,0,ALL,ALL,validation_2022,f,"derecha, excluidos slices y golpes especiales",groundstroke,33463,646,220,220,13394,20069,0.400262977019395,0.395025203711054,0.405523646761936
+code,validation_fold,0,ALL,ALL,validation_2023,f,"derecha, excluidos slices y golpes especiales",groundstroke,34352,620,178,178,13510,20842,0.393281322775966,0.388127970295315,0.398458540508438
+code,validation_fold,0,ALL,ALL,pre_validation,b,"revés, excluidos slices y golpes especiales",groundstroke,266203,4188,704,707,106883,159320,0.401509374424781,0.399648643660622,0.403372947698023
+code,validation_fold,0,ALL,ALL,validation_2020,b,"revés, excluidos slices y golpes especiales",groundstroke,12343,168,113,113,4979,7364,0.403386534878069,0.394763329201192,0.412069859031242
+code,validation_fold,0,ALL,ALL,validation_2021,b,"revés, excluidos slices y golpes especiales",groundstroke,23920,371,165,166,9639,14281,0.402968227424749,0.396768421606076,0.409199194088497
+code,validation_fold,0,ALL,ALL,validation_2022,b,"revés, excluidos slices y golpes especiales",groundstroke,41154,646,220,220,16792,24362,0.408028381202313,0.403288884184289,0.41278504652527
+code,validation_fold,0,ALL,ALL,validation_2023,b,"revés, excluidos slices y golpes especiales",groundstroke,40729,620,178,177,16643,24086,0.408627759090574,0.403862503454663,0.413410249109761
+code,validation_fold,0,ALL,ALL,pre_validation,r,slice de derecha,slice,23770,3383,552,582,6881,16889,0.28948254101809,0.283751487813639,0.295281626488266
+code,validation_fold,0,ALL,ALL,validation_2020,r,slice de derecha,slice,1714,156,103,101,501,1213,0.292298716452742,0.271250415329374,0.314275946056274
+code,validation_fold,0,ALL,ALL,validation_2021,r,slice de derecha,slice,2963,321,146,143,865,2098,0.291933850826865,0.275841158138715,0.308565350562929
+code,validation_fold,0,ALL,ALL,validation_2022,r,slice de derecha,slice,5166,579,194,192,1514,3652,0.293070073557878,0.280815405757267,0.305632260572581
+code,validation_fold,0,ALL,ALL,validation_2023,r,slice de derecha,slice,4692,558,154,161,1345,3347,0.286658141517477,0.27389780174972,0.299767532236496
+code,validation_fold,0,ALL,ALL,pre_validation,s,slice de revés,slice,102035,4141,682,683,31853,70182,0.312177194100064,0.309341077271268,0.315027452868618
+code,validation_fold,0,ALL,ALL,validation_2020,s,slice de revés,slice,2680,153,105,108,671,2009,0.250373134328358,0.234336268819923,0.267124595940721
+code,validation_fold,0,ALL,ALL,validation_2021,s,slice de revés,slice,4892,348,153,154,1274,3618,0.260425183973835,0.248318469010237,0.272907857512881
+code,validation_fold,0,ALL,ALL,validation_2022,s,slice de revés,slice,7600,625,202,206,1938,5662,0.255,0.245326292481765,0.264921255396809
+code,validation_fold,0,ALL,ALL,validation_2023,s,slice de revés,slice,7737,609,172,171,1903,5834,0.245960966782991,0.236492554351664,0.255681517302959
+code,validation_fold,0,ALL,ALL,pre_validation,v,volea de derecha,volley,16,16,13,14,6,10,0.375,0.184812325588636,0.613589594544973
+code,validation_fold,0,ALL,ALL,validation_2020,v,volea de derecha,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,v,volea de derecha,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,v,volea de derecha,volley,1,1,1,1,0,1,0,0,0.793450685622763
+code,validation_fold,0,ALL,ALL,validation_2023,v,volea de derecha,volley,5,5,4,4,0,5,0,0,0.434482464783175
+code,validation_fold,0,ALL,ALL,pre_validation,z,volea de revés,volley,3,3,3,3,1,2,0.333333333333333,0.0614919447203962,0.792340399197952
+code,validation_fold,0,ALL,ALL,validation_2020,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,z,volea de revés,volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,o,remate estándar,overhead,5,5,5,5,2,3,0.4,0.117620774232648,0.769275718723987
+code,validation_fold,0,ALL,ALL,validation_2020,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,o,remate estándar,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2020,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,p,remate de revés,overhead,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,u,dejada de derecha,drop_shot,90,67,49,43,38,52,0.422222222222222,0.325424064674261,0.525388143746857
+code,validation_fold,0,ALL,ALL,validation_2020,u,dejada de derecha,drop_shot,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+code,validation_fold,0,ALL,ALL,validation_2021,u,dejada de derecha,drop_shot,4,4,4,4,2,2,0.5,0.150038989152149,0.849961010847851
+code,validation_fold,0,ALL,ALL,validation_2022,u,dejada de derecha,drop_shot,11,10,9,7,2,9,0.181818181818182,0.0513676897460851,0.476980561960844
+code,validation_fold,0,ALL,ALL,validation_2023,u,dejada de derecha,drop_shot,6,6,6,6,4,2,0.666666666666667,0.299993315138392,0.90322858889422
+code,validation_fold,0,ALL,ALL,pre_validation,y,dejada de revés,drop_shot,465,340,147,117,206,259,0.443010752688172,0.398511199255202,0.488444190455183
+code,validation_fold,0,ALL,ALL,validation_2020,y,dejada de revés,drop_shot,14,11,12,9,5,9,0.357142857142857,0.163447317535541,0.612355768960926
+code,validation_fold,0,ALL,ALL,validation_2021,y,dejada de revés,drop_shot,22,17,15,13,13,9,0.590909090909091,0.387348184763151,0.767441838035281
+code,validation_fold,0,ALL,ALL,validation_2022,y,dejada de revés,drop_shot,23,21,20,14,6,17,0.260869565217391,0.125486160449863,0.464700048374254
+code,validation_fold,0,ALL,ALL,validation_2023,y,dejada de revés,drop_shot,20,18,12,15,7,13,0.35,0.181191824101082,0.567145723314764
+code,validation_fold,0,ALL,ALL,pre_validation,l,globo de derecha,lob,476,384,163,173,101,375,0.21218487394958,0.177834442730374,0.251143618745578
+code,validation_fold,0,ALL,ALL,validation_2020,l,globo de derecha,lob,31,22,22,21,4,27,0.129032258064516,0.0513428437462915,0.288524062563064
+code,validation_fold,0,ALL,ALL,validation_2021,l,globo de derecha,lob,62,35,31,31,14,48,0.225806451612903,0.139551830385883,0.34405620915358
+code,validation_fold,0,ALL,ALL,validation_2022,l,globo de derecha,lob,211,126,88,81,36,175,0.170616113744076,0.12586099681657,0.227150285256278
+code,validation_fold,0,ALL,ALL,validation_2023,l,globo de derecha,lob,213,125,77,75,31,182,0.145539906103286,0.104464323391432,0.19917437733848
+code,validation_fold,0,ALL,ALL,pre_validation,m,globo de revés,lob,1507,905,252,291,267,1240,0.177173191771732,0.15872381057861,0.197264208998582
+code,validation_fold,0,ALL,ALL,validation_2020,m,globo de revés,lob,110,58,56,56,17,93,0.154545454545455,0.0987865236193987,0.23361837713206
+code,validation_fold,0,ALL,ALL,validation_2021,m,globo de revés,lob,245,125,83,76,38,207,0.155102040816327,0.115134580540727,0.20571813909481
+code,validation_fold,0,ALL,ALL,validation_2022,m,globo de revés,lob,465,192,117,114,88,377,0.189247311827957,0.156245804990606,0.2273411313547
+code,validation_fold,0,ALL,ALL,validation_2023,m,globo de revés,lob,500,219,102,96,73,427,0.146,0.117748766826469,0.17964926622031
+code,validation_fold,0,ALL,ALL,pre_validation,h,media volea de derecha,half_volley,14,12,11,6,5,9,0.357142857142857,0.163447317535541,0.612355768960926
+code,validation_fold,0,ALL,ALL,validation_2020,h,media volea de derecha,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,h,media volea de derecha,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,h,media volea de derecha,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,h,media volea de derecha,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,i,media volea de revés,half_volley,38,18,17,3,20,18,0.526315789473684,0.372589713844967,0.675209766774739
+code,validation_fold,0,ALL,ALL,validation_2020,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,i,media volea de revés,half_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2020,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,j,volea liftada de derecha,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2020,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2021,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2023,k,volea liftada de revés,swinging_volley,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,pre_validation,t,"golpe especial, incluido trick shot o tweener",special,16,14,12,11,4,12,0.25,0.10182067491213,0.494983165355088
+code,validation_fold,0,ALL,ALL,validation_2020,t,"golpe especial, incluido trick shot o tweener",special,1,1,1,1,0,1,0,0,0.793450685622763
+code,validation_fold,0,ALL,ALL,validation_2021,t,"golpe especial, incluido trick shot o tweener",special,0,0,0,0,0,0,,,
+code,validation_fold,0,ALL,ALL,validation_2022,t,"golpe especial, incluido trick shot o tweener",special,1,1,1,1,1,0,1,0.206549314377237,1
+code,validation_fold,0,ALL,ALL,validation_2023,t,"golpe especial, incluido trick shot o tweener",special,0,0,0,0,0,0,,,
+family,total,0,ALL,ALL,ALL,,,groundstroke,713891,5993,870,870,282058,431833,0.395099532001384,0.39396606203788,0.396234130900985
+family,total,0,ALL,ALL,ALL,,,slice,163249,5959,848,848,48745,114504,0.298592946970579,0.296377734436319,0.300817638015515
+family,total,0,ALL,ALL,ALL,,,volley,25,25,21,22,7,18,0.28,0.142838538509566,0.475766051903616
+family,total,0,ALL,ALL,ALL,,,overhead,5,5,5,5,2,3,0.4,0.117620774232648,0.769275718723987
+family,total,0,ALL,ALL,ALL,,,drop_shot,657,470,193,161,284,373,0.432267884322679,0.394889498418692,0.470433721224904
+family,total,0,ALL,ALL,ALL,,,lob,3820,1759,409,437,669,3151,0.175130890052356,0.163406026162396,0.187508485663241
+family,total,0,ALL,ALL,ALL,,,half_volley,52,24,22,6,25,27,0.480769230769231,0.351041144454555,0.613143172319439
+family,total,0,ALL,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,total,0,ALL,ALL,ALL,,,special,18,16,14,12,5,13,0.277777777777778,0.12499753379554,0.508726565602975
+family,serve_number,1,ALL,ALL,ALL,,,groundstroke,399762,5993,870,870,140945,258817,0.352572280506902,0.35109266267875,0.354054731681251
+family,serve_number,2,ALL,ALL,ALL,,,groundstroke,314129,5993,870,869,141113,173016,0.449219906471545,0.447481085011462,0.450959969887976
+family,serve_number,1,ALL,ALL,ALL,,,slice,128304,5945,845,842,34582,93722,0.26953173712433,0.267110747930118,0.271966526478083
+family,serve_number,2,ALL,ALL,ALL,,,slice,34945,4203,634,639,14163,20782,0.405294033481185,0.400157269353237,0.410451617130196
+family,serve_number,1,ALL,ALL,ALL,,,volley,19,19,16,18,5,14,0.263157894736842,0.118064123467825,0.487915508978151
+family,serve_number,2,ALL,ALL,ALL,,,volley,6,6,5,6,2,4,0.333333333333333,0.0967714111057804,0.700006684861608
+family,serve_number,1,ALL,ALL,ALL,,,overhead,4,4,4,4,1,3,0.25,0.0455872608097005,0.699358157417598
+family,serve_number,2,ALL,ALL,ALL,,,overhead,1,1,1,1,1,0,1,0.206549314377237,1
+family,serve_number,1,ALL,ALL,ALL,,,drop_shot,189,153,88,88,72,117,0.380952380952381,0.314742647751493,0.45190504162405
+family,serve_number,2,ALL,ALL,ALL,,,drop_shot,468,349,159,118,212,256,0.452991452991453,0.408457466542556,0.498290871956625
+family,serve_number,1,ALL,ALL,ALL,,,lob,3554,1680,402,420,608,2946,0.171074845244795,0.159051025987611,0.183808956094062
+family,serve_number,2,ALL,ALL,ALL,,,lob,266,231,113,154,61,205,0.229323308270677,0.182869276169819,0.283484038738377
+family,serve_number,1,ALL,ALL,ALL,,,half_volley,4,3,3,3,2,2,0.5,0.150038989152149,0.849961010847851
+family,serve_number,2,ALL,ALL,ALL,,,half_volley,48,22,20,4,23,25,0.479166666666667,0.344713161769516,0.616707676966572
+family,serve_number,1,ALL,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,serve_number,2,ALL,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,serve_number,1,ALL,ALL,ALL,,,special,13,11,10,9,2,11,0.153846153846154,0.0432581783580812,0.422346310194825
+family,serve_number,2,ALL,ALL,ALL,,,special,5,5,5,5,3,2,0.6,0.230724281276013,0.882379225767352
+family,surface,0,Clay,ALL,ALL,,,groundstroke,185436,1439,499,499,75756,109680,0.408529088202938,0.406293679512212,0.410768286605068
+family,surface,0,Grass,ALL,ALL,,,groundstroke,91094,705,316,316,33678,57416,0.36970601795947,0.366576822573628,0.372846201947426
+family,surface,0,Hard,ALL,ALL,,,groundstroke,437361,3849,643,643,172624,264737,0.394694542951932,0.39324688247918,0.396144053260513
+family,surface,0,Clay,ALL,ALL,,,slice,27859,1422,475,477,8268,19591,0.296780214652356,0.291444040479617,0.302172424778078
+family,surface,0,Grass,ALL,ALL,,,slice,27186,705,314,310,8003,19183,0.294379460016185,0.288991117490928,0.299825903861248
+family,surface,0,Hard,ALL,ALL,,,slice,108204,3832,638,638,32474,75730,0.300118295072271,0.29739466111735,0.302856120925452
+family,surface,0,Clay,ALL,ALL,,,volley,6,6,6,6,3,3,0.5,0.187616306482651,0.812383693517349
+family,surface,0,Grass,ALL,ALL,,,volley,2,2,2,2,0,2,0,0,0.657619772493347
+family,surface,0,Hard,ALL,ALL,,,volley,17,17,15,14,4,13,0.235294117647059,0.0955504432208012,0.47261798119565
+family,surface,0,Clay,ALL,ALL,,,overhead,0,0,0,0,0,0,,,
+family,surface,0,Grass,ALL,ALL,,,overhead,1,1,1,1,0,1,0,0,0.793450685622763
+family,surface,0,Hard,ALL,ALL,,,overhead,4,4,4,4,2,2,0.5,0.150038989152149,0.849961010847851
+family,surface,0,Clay,ALL,ALL,,,drop_shot,268,174,106,81,122,146,0.455223880597015,0.396654592776834,0.515058653230169
+family,surface,0,Grass,ALL,ALL,,,drop_shot,77,60,48,39,38,39,0.493506493506494,0.384830203072124,0.602799906347129
+family,surface,0,Hard,ALL,ALL,,,drop_shot,312,236,116,98,124,188,0.397435897435897,0.344699393160691,0.452667297586728
+family,surface,0,Clay,ALL,ALL,,,lob,1053,444,221,222,208,845,0.197530864197531,0.174601614660781,0.222658972834704
+family,surface,0,Grass,ALL,ALL,,,lob,577,256,146,152,88,489,0.152512998266898,0.125483527578511,0.184138755902826
+family,surface,0,Hard,ALL,ALL,,,lob,2190,1059,295,319,373,1817,0.170319634703196,0.155156158833364,0.186637663963555
+family,surface,0,Clay,ALL,ALL,,,half_volley,3,2,2,2,0,3,0,0,0.561497031755045
+family,surface,0,Grass,ALL,ALL,,,half_volley,4,4,4,2,2,2,0.5,0.150038989152149,0.849961010847851
+family,surface,0,Hard,ALL,ALL,,,half_volley,45,18,17,3,23,22,0.511111111111111,0.370044646445832,0.650429762471215
+family,surface,0,Clay,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,surface,0,Grass,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,surface,0,Hard,ALL,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,surface,0,Clay,ALL,ALL,,,special,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+family,surface,0,Grass,ALL,ALL,,,special,4,4,4,3,0,4,0,0,0.489890836454597
+family,surface,0,Hard,ALL,ALL,,,special,12,10,9,9,4,8,0.333333333333333,0.138120091091213,0.6093779111272
+family,derived_period,0,ALL,2010s,ALL,,,groundstroke,251154,2232,412,412,98857,152297,0.393611091203007,0.391702055102932,0.395523381739493
+family,derived_period,0,ALL,2020s,ALL,,,groundstroke,216096,1805,332,332,86587,129509,0.40068765733748,0.3986233261651,0.402755519324803
+family,derived_period,0,ALL,to_2009,ALL,,,groundstroke,246641,1956,357,357,96614,150027,0.391719138342773,0.389794401554299,0.393647248049722
+family,derived_period,0,ALL,2010s,ALL,,,slice,54875,2224,405,403,15934,38941,0.290369020501139,0.286585822745976,0.294181566134423
+family,derived_period,0,ALL,2020s,ALL,,,slice,37444,1781,318,319,10011,27433,0.267359256489691,0.262900479755562,0.271865762534852
+family,derived_period,0,ALL,to_2009,ALL,,,slice,70930,1954,353,354,22800,48130,0.321443676864514,0.318016434262698,0.324890259086133
+family,derived_period,0,ALL,2010s,ALL,,,volley,7,7,6,7,4,3,0.571428571428571,0.250458364527657,0.84178014474853
+family,derived_period,0,ALL,2020s,ALL,,,volley,6,6,5,5,0,6,0,0,0.390334287902165
+family,derived_period,0,ALL,to_2009,ALL,,,volley,12,12,11,12,3,9,0.25,0.0889416683940547,0.532305334933566
+family,derived_period,0,ALL,2010s,ALL,,,overhead,4,4,4,4,1,3,0.25,0.0455872608097005,0.699358157417598
+family,derived_period,0,ALL,2020s,ALL,,,overhead,0,0,0,0,0,0,,,
+family,derived_period,0,ALL,to_2009,ALL,,,overhead,1,1,1,1,1,0,1,0.206549314377237,1
+family,derived_period,0,ALL,2010s,ALL,,,drop_shot,267,194,94,77,111,156,0.415730337078652,0.358218139030507,0.475632999580471
+family,derived_period,0,ALL,2020s,ALL,,,drop_shot,102,85,55,46,40,62,0.392156862745098,0.302975181892627,0.489166760923277
+family,derived_period,0,ALL,to_2009,ALL,,,drop_shot,288,191,82,63,133,155,0.461805555555556,0.405109023372746,0.519507581516429
+family,derived_period,0,ALL,2010s,ALL,,,lob,1133,584,175,195,208,925,0.183583406884378,0.162122641857474,0.207182555066131
+family,derived_period,0,ALL,2020s,ALL,,,lob,1837,673,224,214,301,1536,0.163854109961894,0.147632357580313,0.181478797493746
+family,derived_period,0,ALL,to_2009,ALL,,,lob,850,502,128,148,160,690,0.188235294117647,0.163380901231552,0.215894964885299
+family,derived_period,0,ALL,2010s,ALL,,,half_volley,51,23,21,5,25,26,0.490196078431373,0.358574858943707,0.623190761054303
+family,derived_period,0,ALL,2020s,ALL,,,half_volley,0,0,0,0,0,0,,,
+family,derived_period,0,ALL,to_2009,ALL,,,half_volley,1,1,1,1,0,1,0,0,0.793450685622763
+family,derived_period,0,ALL,2010s,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,derived_period,0,ALL,2020s,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,derived_period,0,ALL,to_2009,ALL,,,swinging_volley,0,0,0,0,0,0,,,
+family,derived_period,0,ALL,2010s,ALL,,,special,11,10,9,7,3,8,0.272727272727273,0.0974605929002489,0.565645301176129
+family,derived_period,0,ALL,2020s,ALL,,,special,2,2,2,2,1,1,0.5,0.0945312057342307,0.905468794265769
+family,derived_period,0,ALL,to_2009,ALL,,,special,5,4,4,4,1,4,0.2,0.0362241086324301,0.624465370237475
+family,validation_fold,0,ALL,ALL,pre_validation,,,groundstroke,497795,4188,709,709,195471,302324,0.392673690977209,0.391317930546935,0.39403110785809
+family,validation_fold,0,ALL,ALL,validation_2020,,,groundstroke,22311,168,113,113,8792,13519,0.394065707498543,0.387672585822335,0.400495301961089
+family,validation_fold,0,ALL,ALL,validation_2021,,,groundstroke,44087,371,166,166,17456,26631,0.395944382697847,0.391388558714167,0.400518338581746
+family,validation_fold,0,ALL,ALL,validation_2022,,,groundstroke,74617,646,220,220,30186,44431,0.404545880965464,0.40102930469566,0.408072285134829
+family,validation_fold,0,ALL,ALL,validation_2023,,,groundstroke,75081,620,178,178,30153,44928,0.401606265233548,0.39810486122102,0.405117737203148
+family,validation_fold,0,ALL,ALL,pre_validation,,,slice,125805,4178,699,697,38734,87071,0.307889193593259,0.305344246085692,0.310445872959149
+family,validation_fold,0,ALL,ALL,validation_2020,,,slice,4394,164,110,111,1172,3222,0.266727355484752,0.253858949000133,0.280003283371081
+family,validation_fold,0,ALL,ALL,validation_2021,,,slice,7855,361,158,160,2139,5716,0.272310630171865,0.262579506065314,0.282264346715912
+family,validation_fold,0,ALL,ALL,validation_2022,,,slice,12766,636,211,212,3452,9314,0.270405765314116,0.262770740460742,0.27817892450547
+family,validation_fold,0,ALL,ALL,validation_2023,,,slice,12429,620,176,176,3248,9181,0.261324322149811,0.253674827784867,0.26912130698039
+family,validation_fold,0,ALL,ALL,pre_validation,,,volley,19,19,16,17,7,12,0.368421052631579,0.191495127451351,0.589604668351969
+family,validation_fold,0,ALL,ALL,validation_2020,,,volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2021,,,volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2022,,,volley,1,1,1,1,0,1,0,0,0.793450685622763
+family,validation_fold,0,ALL,ALL,validation_2023,,,volley,5,5,4,4,0,5,0,0,0.434482464783175
+family,validation_fold,0,ALL,ALL,pre_validation,,,overhead,5,5,5,5,2,3,0.4,0.117620774232648,0.769275718723987
+family,validation_fold,0,ALL,ALL,validation_2020,,,overhead,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2021,,,overhead,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2022,,,overhead,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2023,,,overhead,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,pre_validation,,,drop_shot,555,385,159,131,244,311,0.43963963963964,0.398900940800636,0.481208168961213
+family,validation_fold,0,ALL,ALL,validation_2020,,,drop_shot,16,12,13,10,6,10,0.375,0.184812325588636,0.613589594544973
+family,validation_fold,0,ALL,ALL,validation_2021,,,drop_shot,26,21,17,15,15,11,0.576923076923077,0.389486137465917,0.744555566863434
+family,validation_fold,0,ALL,ALL,validation_2022,,,drop_shot,34,30,28,18,8,26,0.235294117647059,0.124369855326396,0.399961379225364
+family,validation_fold,0,ALL,ALL,validation_2023,,,drop_shot,26,22,15,18,11,15,0.423076923076923,0.255444433136566,0.610513862534083
+family,validation_fold,0,ALL,ALL,pre_validation,,,lob,1983,1086,280,322,368,1615,0.185577407967726,0.169080119005751,0.203290537714807
+family,validation_fold,0,ALL,ALL,validation_2020,,,lob,141,64,60,60,21,120,0.148936170212766,0.0995235723810119,0.21697047009783
+family,validation_fold,0,ALL,ALL,validation_2021,,,lob,307,131,91,82,52,255,0.169381107491857,0.13156958471659,0.215364377148843
+family,validation_fold,0,ALL,ALL,validation_2022,,,lob,676,229,137,130,124,552,0.183431952662722,0.156073493585664,0.214367960893381
+family,validation_fold,0,ALL,ALL,validation_2023,,,lob,713,249,119,110,104,609,0.14586255259467,0.121851930693363,0.173668726230141
+family,validation_fold,0,ALL,ALL,pre_validation,,,half_volley,52,24,22,6,25,27,0.480769230769231,0.351041144454555,0.613143172319439
+family,validation_fold,0,ALL,ALL,validation_2020,,,half_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2021,,,half_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2022,,,half_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2023,,,half_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,pre_validation,,,swinging_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2020,,,swinging_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2021,,,swinging_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2022,,,swinging_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2023,,,swinging_volley,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,pre_validation,,,special,16,14,12,11,4,12,0.25,0.10182067491213,0.494983165355088
+family,validation_fold,0,ALL,ALL,validation_2020,,,special,1,1,1,1,0,1,0,0,0.793450685622763
+family,validation_fold,0,ALL,ALL,validation_2021,,,special,0,0,0,0,0,0,,,
+family,validation_fold,0,ALL,ALL,validation_2022,,,special,1,1,1,1,1,0,1,0.206549314377237,1
+family,validation_fold,0,ALL,ALL,validation_2023,,,special,0,0,0,0,0,0,,,
