@@ -1,0 +1,7 @@
+marker_context,attempts,matches,servers,returners,denominator_attempts,proportion
+service_and_return_approach_documented,682,311,103,102,1426863,0.00047797160624390707
+service_approach_documented_return_not_documented,0,0,0,0,1426863,0.0
+return_approach_documented_service_not_documented,11752,2866,504,453,1426863,0.008236249731053366
+neither_documented,0,0,0,0,1426863,0.0
+unknown_marker_context,885892,5993,870,870,1426863,0.6208668947193949
+ineligible_censored,528537,5993,870,870,1426863,0.3704188839433078

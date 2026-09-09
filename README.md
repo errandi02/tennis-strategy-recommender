@@ -243,6 +243,33 @@ recomendaciones. La publicacion final se reparo una unica vez solo sobre los
 artefactos para restaurar el orden canonico de superficies; no hubo una tercera
 ejecucion real.
 
+### Aproximacion documentada inmediatamente tras el primer resto (P08)
+
+P08 identifica exclusivamente el marcador literal `+` situado inmediatamente
+despues del tipo conocido del primer resto. Es distinto de P03: aquel marcador
+describe la intencion anotada del servidor tras el saque, mientras que P08
+pertenece al restador. En desarrollo hasta 2023 se examinaron 1.426.863 intentos
+(1.035.760 primeros y 391.103 segundos): 12.434 contienen P08 documentado
+(0,8714 %), 885.892 quedan como `unknown_initial_return` y 528.537 estan
+censurados. No se observo ningun negativo P08 inequivoco, por lo que el estado
+es `available_descriptive_not_comparable` y los outcomes no estan disponibles.
+
+```powershell
+python -m src.analysis.return_approach_descriptive_feasibility --performance-log <ruta-externa>
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_approach_descriptive_feasibility_summary.json`
+- `reports/tables/return_approach_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_approach_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_approach_descriptive_feasibility_marker_context.csv`
+- `reports/tables/return_approach_descriptive_feasibility_outcomes.csv`
+
+El test 2024--2026 permanece sellado (1.531 partidos excluidos). P08 es una
+etiqueta documental y observacional, no causal: no demuestra llegada a red,
+volea fisica ni efectividad, y no genera una recomendacion tactica.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
