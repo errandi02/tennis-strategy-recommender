@@ -212,6 +212,37 @@ El test 2024--2026 permanece sellado: 1.531 partidos se excluyen antes de
 construir intentos o llamar al extractor. P06 no fija thresholds, perfiles,
 modelos, scoring ni recomendaciones.
 
+### Resultado terminal documentado inmediatamente del primer resto (P07)
+
+P07 atribuye solo un ganador, error forzado o error no forzado que pertenezca
+al primer resto local y cierre completamente la secuencia. No busca terminales
+posteriores; la ausencia de terminal no prueba que el rally continuase, y el
+outcome no interviene en la clasificacion. En desarrollo hasta 2023 publica
+1.426.863 intentos (1.035.760 primeros y 391.103 segundos), con 74.178
+terminales elegibles (5,20 %): 17.955 winners, 16.550 forced errors y 39.673
+unforced errors (`n` 14.541, `w` 8.063, `d` 15.158, `x` 1.480, `e` 10 y `!`
+421). Los segundos intentos se diagnostican como 382.143 con primera falta
+documentada y 8.960 sin ella; no se infiere ni corrige una falta previa.
+
+```powershell
+python -m src.analysis.return_terminal_descriptive_feasibility
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_terminal_descriptive_feasibility_summary.json`
+- `reports/tables/return_terminal_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_terminal_descriptive_feasibility_by_terminal.csv`
+- `reports/tables/return_terminal_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_terminal_descriptive_feasibility_consistency.csv`
+
+La comprobacion terminal--outcome conserva tres discordancias como auditoria de
+anotacion, sin corregirlas ni interpretarlas como eficacia tactica. El test
+2024--2026 permanece sellado; P07 es descriptivo, no causal, y no genera
+recomendaciones. La publicacion final se reparo una unica vez solo sobre los
+artefactos para restaurar el orden canonico de superficies; no hubo una tercera
+ejecucion real.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
