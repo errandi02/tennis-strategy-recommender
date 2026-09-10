@@ -307,6 +307,27 @@ amplios. El test 2024--2026 sigue sellado con 1.531 partidos excluidos. P09 no
 establece causalidad ni una estrategia optima, y no selecciona thresholds,
 smoothing, scoring, rankings o recomendaciones automaticas.
 
+### Registro contractual de patrones tacticos P02--P09
+
+El inventario MVP de ocho patrones se publica en una interfaz comun y
+machine-readable construida exclusivamente desde sus artefactos agregados:
+
+```powershell
+python -m src.analysis.tactical_pattern_registry
+```
+
+Artefactos versionables:
+
+- `reports/tactical_pattern_registry_summary.json`
+- `reports/tables/tactical_pattern_registry.csv`
+
+El registro distingue el resultado descriptivo upstream de la preparacion de
+cada patron para el recomendador. `eligible_component` significa solo que el
+patron puede aportar una entrada explicable; no constituye por si mismo una
+recomendacion. El test 2024--2026 permanece sellado y no se evalua. Las tasas y
+coberturas son observacionales, no causales. El siguiente paso es consumir esta
+interfaz comun desde el motor sin reinterpretar los contratos publicados.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
