@@ -270,6 +270,43 @@ El test 2024--2026 permanece sellado (1.531 partidos excluidos). P08 es una
 etiqueta documental y observacional, no causal: no demuestra llegada a red,
 volea fisica ni efectividad, y no genera una recomendacion tactica.
 
+### Perfil documental compuesto del primer resto (P09)
+
+P09 combina exclusivamente perfiles completos del primer resto: tipo de golpe
+documentado x direccion lateral `1/2/3` x profundidad `7/8/9`. El significado
+documental original de direccion y profundidad se conserva; no se renombran
+como cruzado/paralelo ni corto/profundo. El catalogo cerrado contiene 153
+perfiles (17 x 3 x 3).
+
+En desarrollo hasta 2023 se analizaron 1.426.863 intentos: 1.035.760 primeros
+y 391.103 segundos. Hay 601.246 perfiles completos (aprox. 42,14 %), de los
+que 79 perfiles aparecen al menos una vez, 74 tienen cero observaciones y 19
+son raros, definidos descriptivamente como 1--9 intentos. Por tipo predominan
+`b` (271.819), `f` (221.735), `s` (80.891) y `r` (24.593); los otros trece
+codigos suman 2.208. Las direcciones `1/2/3` suman respectivamente
+103.527/312.084/185.635 intentos y las profundidades `7/8/9`,
+159.482/293.400/148.364.
+
+```powershell
+python -m src.analysis.return_profile_descriptive_feasibility --performance-log <ruta-externa>
+```
+
+Artefactos agregados versionables:
+
+- `reports/return_profile_descriptive_feasibility_summary.json`
+- `reports/tables/return_profile_descriptive_feasibility_by_state.csv`
+- `reports/tables/return_profile_descriptive_feasibility_by_profile.csv`
+- `reports/tables/return_profile_descriptive_feasibility_by_group.csv`
+- `reports/tables/return_profile_descriptive_feasibility_outcomes.csv`
+
+Los outcomes son asociaciones condicionadas a los 601.246 perfiles
+completamente documentados (286.028 puntos ganados por el restador y 315.218
+por el servidor), con intervalos Wilson descriptivos. La observabilidad puede
+introducir seleccion y censura, y los perfiles raros producen intervalos muy
+amplios. El test 2024--2026 sigue sellado con 1.531 partidos excluidos. P09 no
+establece causalidad ni una estrategia optima, y no selecciona thresholds,
+smoothing, scoring, rankings o recomendaciones automaticas.
+
 ### Baseline descriptivo de segundo servicio
 
 El baseline incluye los 481.190 puntos con segundo saque sustantivo y prefijo
