@@ -350,28 +350,47 @@ class TacticalRecommendationService:
             raise InvalidRequestError()
         validate_tactical_recommendation_query(query)
 
+        result: object | None = None
+        provider_error_type: type[TacticalRecommendationServiceError] | None = None
         try:
             result = self._provider.fetch_tactical_prioritization(query)
-        except TacticalRecommendationServiceError:
-            raise
+        except TacticalRecommendationServiceError as error:
+            provider_error_type = (
+                type(error)
+                if type(error) in _SERVICE_ERROR_CATALOG.values()
+                else InternalServiceError
+            )
         except Exception:
-            raise InternalServiceError() from None
+            provider_error_type = InternalServiceError
+        if provider_error_type is not None:
+            # Se eleva fuera del bloque except para no conservar __context__
+            # ni una eventual __cause__ sensible aportada por el provider.
+            raise provider_error_type()
 
         if type(result) is not TacticalPrioritizationResult:
             raise UpstreamContractViolationError()
+        result_invalid = False
         try:
             validate_tactical_prioritization_result(result)
-            summary = result.matchup_query
-            if (
-                summary.player != query.player_id
-                or summary.opponent != query.opponent_id
-                or summary.as_of_date != query.as_of_date.isoformat()
-            ):
-                raise UpstreamContractViolationError()
+        except Exception:
+            result_invalid = True
+        if result_invalid:
+            raise UpstreamContractViolationError()
+        summary = result.matchup_query
+        if (
+            summary.player != query.player_id
+            or summary.opponent != query.opponent_id
+            or summary.as_of_date != query.as_of_date.isoformat()
+        ):
+            raise UpstreamContractViolationError()
+
+        response: object | None = None
+        projection_invalid = False
+        try:
             response = build_public_tactical_recommendation(result)
             validate_public_tactical_recommendation(response, source=result)
-        except TacticalRecommendationServiceError:
-            raise
         except Exception:
-            raise UpstreamContractViolationError() from None
+            projection_invalid = True
+        if projection_invalid or type(response) is not TacticalRecommendationResponse:
+            raise UpstreamContractViolationError()
         return response

@@ -597,17 +597,39 @@ def test_public_builder_and_validator_are_called_exactly_once(
         ProviderUnavailableError,
     ],
 )
-def test_known_provider_errors_pass_through_unchanged(error_cls):
-    provider = _RecordingProvider(raise_error=error_cls())
+def test_known_provider_errors_are_normalized_without_exception_chains(error_cls):
+    source = error_cls()
+    source.__cause__ = RuntimeError("PLAYER_SECRET_123 C:\\private\\secret")
+    provider = _RecordingProvider(raise_error=source)
     service = TacticalRecommendationService(provider)
     with pytest.raises(error_cls) as excinfo:
         service.recommend(_valid_query())
     error = excinfo.value
+    assert error is not source
     assert error.reason_code == error_cls.reason_code
     assert error.stage == error_cls.stage
     assert error.retryable is error_cls.retryable
     assert error.public_message == error_cls.public_message
     assert error.args == ()
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+def test_provider_error_subclasses_and_mutated_instances_are_not_trusted():
+    class _ForgedTimeout(ProviderTimeoutError):
+        reason_code = "provider_timeout"
+
+    forged = _ForgedTimeout()
+    forged.public_message = "PLAYER_SECRET_123 /Users/private/secret"
+    service = TacticalRecommendationService(_RecordingProvider(raise_error=forged))
+    with pytest.raises(InternalServiceError) as excinfo:
+        service.recommend(_valid_query())
+    assert type(excinfo.value) is InternalServiceError
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None
+    _sentinel_scan(
+        repr(excinfo.value), "PLAYER_SECRET_123", "/Users/private/secret"
+    )
 
 
 @pytest.mark.parametrize(
@@ -630,6 +652,8 @@ def test_unexpected_provider_exceptions_become_sanitized_internal_error(unexpect
     assert error.stage == "internal"
     assert error.retryable is False
     assert error.args == ()
+    assert error.__cause__ is None
+    assert error.__context__ is None
     _sentinel_scan(
         repr(error), "Alice", "/Users/omar", "C:\\tmp", "2021-05-01", "file://"
     )
@@ -729,15 +753,23 @@ def test_builder_failure_is_upstream_contract_violation(
     service = TacticalRecommendationService(_RecordingProvider(available_result))
 
     def failing_builder(result):
-        raise TacticalRecommendationContractError(
-            "politica fuera del contrato congelado"
-        )
+        try:
+            raise RuntimeError("PLAYER_SECRET_123 C:\\private\\secret")
+        except RuntimeError as source:
+            raise TacticalRecommendationContractError(
+                "politica fuera del contrato congelado"
+            ) from source
 
     monkeypatch.setattr(
         service_module, "build_public_tactical_recommendation", failing_builder
     )
-    with pytest.raises(UpstreamContractViolationError):
+    with pytest.raises(UpstreamContractViolationError) as excinfo:
         service.recommend(_valid_query())
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None
+    _sentinel_scan(
+        repr(excinfo.value), "PLAYER_SECRET_123", "C:\\private\\secret"
+    )
 
 
 # --------------------------------------------------------------------------

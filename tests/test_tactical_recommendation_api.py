@@ -9,18 +9,32 @@ con operation IDs fijos y modulo sin estado global ni app al importar.
 from __future__ import annotations
 
 import ast
+from datetime import date
+from hashlib import sha256
 import json
 import logging
 import re
 from dataclasses import fields
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from src.api import app as api_module
-from src.api.app import create_app
+from src.api.app import (
+    TacticalRecommendationRequest,
+    TacticalRecommendationResponseSchema,
+    create_app,
+)
 from src.recommender.tactical_recommendation_contract import (
+    CARD_RECONCILIATIONS,
+    PUBLIC_FINGERPRINT_DOMAIN,
+    RESPONSE_RECONCILIATIONS,
+    PublicEvidenceComponent,
+    TacticalPatternCard,
+    TacticalRecommendationOption,
     TacticalRecommendationResponse,
     canonical_tactical_recommendation_json,
 )
@@ -72,8 +86,12 @@ def _provider_for(state: str, variant: int = 0) -> _RecordingProvider:
     return _RecordingProvider(_result_for(state, variant))
 
 
-def _client(provider: _RecordingProvider) -> TestClient:
-    return TestClient(create_app(provider))
+def _client(
+    provider: _RecordingProvider, *, raise_server_exceptions: bool = True
+) -> TestClient:
+    return TestClient(
+        create_app(provider), raise_server_exceptions=raise_server_exceptions
+    )
 
 
 def _logged_events(caplog) -> list[dict[str, object]]:
@@ -84,6 +102,12 @@ def _logged_events(caplog) -> list[dict[str, object]]:
             continue
         events.append(json.loads(message[len("service_event "):]))
     return events
+
+
+def _resolve_schema(spec: dict[str, object], schema: dict[str, object]) -> dict[str, object]:
+    if "$ref" not in schema:
+        return schema
+    return spec["components"]["schemas"][schema["$ref"].rsplit("/", 1)[-1]]
 
 
 def test_api_module_does_not_build_app_or_provider_at_import():
@@ -103,6 +127,14 @@ def test_api_module_does_not_build_app_or_provider_at_import():
         assert forbidden not in dir(api_module)
 
 
+def test_factory_does_not_expose_provider_as_mutable_app_state():
+    provider = _provider_for("available")
+    app = create_app(provider)
+    assert app.state._state == {}
+    assert not hasattr(app, "provider")
+    assert not hasattr(app.state, "provider")
+
+
 def test_create_app_requires_a_valid_provider():
     with pytest.raises(TypeError):
         create_app(None)
@@ -116,7 +148,8 @@ def test_create_app_requires_a_valid_provider():
 
 
 def test_healthz_reports_process_liveness():
-    client = _client(_provider_for("available"))
+    provider = _provider_for("available")
+    client = _client(provider)
     response = client.get(_HEALTH_PATH)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
@@ -126,6 +159,7 @@ def test_healthz_reports_process_liveness():
         "status": "ok",
     }
     assert _REQUEST_ID_RE.fullmatch(response.headers["x-request-id"])
+    assert provider.calls == 0
 
 
 def test_healthz_body_is_deterministic_but_request_ids_differ():
@@ -134,6 +168,35 @@ def test_healthz_body_is_deterministic_but_request_ids_differ():
     second = client.get(_HEALTH_PATH)
     assert first.content == second.content
     assert first.headers["x-request-id"] != second.headers["x-request-id"]
+
+
+def test_each_handled_request_generates_exactly_one_server_request_id(monkeypatch):
+    issued: list[str] = []
+
+    def fake_uuid4():
+        value = f"{len(issued) + 1:032x}"
+        issued.append(value)
+        return SimpleNamespace(hex=value)
+
+    monkeypatch.setattr(api_module.uuid, "uuid4", fake_uuid4)
+    success = _client(_provider_for("available")).post(
+        _POST_PATH,
+        json=_valid_body(),
+        headers={"X-Request-ID": "client-supplied-id-must-be-ignored"},
+    )
+    rejected = _client(
+        _RecordingProvider(raise_error=ProviderTimeoutError())
+    ).post(_POST_PATH, json=_valid_body())
+    invalid = _client(_provider_for("available")).post(_POST_PATH, json={})
+    health = _client(_provider_for("available")).get(_HEALTH_PATH)
+    assert issued == [f"{value:032x}" for value in range(1, 5)]
+    assert [
+        success.headers["x-request-id"],
+        rejected.headers["x-request-id"],
+        invalid.headers["x-request-id"],
+        health.headers["x-request-id"],
+    ] == issued
+    assert success.headers["x-request-id"] != "client-supplied-id-must-be-ignored"
 
 
 # --------------------------------------------------------------------------
@@ -150,16 +213,53 @@ def test_post_returns_exact_canonical_p11_bytes():
         service.recommend(TacticalRecommendationQuery(_PLAYER, _OPPONENT, AS_OF_DATE))
     )
     assert response.content == expected
+    documented = TacticalRecommendationResponseSchema.model_validate(response.json())
+    assert documented.model_dump(mode="json") == response.json()
     assert provider.calls == 1
 
 
-def test_success_exposes_strong_etag_and_request_id():
+def test_success_exposes_independently_recomputed_strong_etag_and_request_id():
     response = _client(_provider_for("available")).post(_POST_PATH, json=_valid_body())
-    fingerprint = json.loads(response.content)["fingerprint"]
+    payload = json.loads(response.content)
+    published_fingerprint = payload.pop("fingerprint")
+    core = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    independently_recomputed = sha256(PUBLIC_FINGERPRINT_DOMAIN + core).hexdigest().upper()
     assert re.fullmatch(r'"[0-9A-F]{64}"', response.headers["etag"])
-    assert response.headers["etag"] == f'"{fingerprint}"'
+    assert published_fingerprint == independently_recomputed
+    assert response.headers["etag"] == f'"{independently_recomputed}"'
     assert not response.headers["etag"].startswith("W/")
     assert _REQUEST_ID_RE.fullmatch(response.headers["x-request-id"])
+
+
+def test_success_obtains_etag_through_the_public_p11_verifier(monkeypatch):
+    calls = []
+    real_verifier = api_module.tactical_recommendation_fingerprint
+
+    def verifying_spy(response):
+        calls.append(response)
+        return real_verifier(response)
+
+    monkeypatch.setattr(
+        api_module, "tactical_recommendation_fingerprint", verifying_spy
+    )
+    response = _client(_provider_for("available")).post(
+        _POST_PATH, json=_valid_body()
+    )
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert response.headers["etag"] == f'"{calls[0].fingerprint}"'
+
+
+def test_http_request_model_requires_a_string_date_before_parsing():
+    with pytest.raises(ValidationError):
+        TacticalRecommendationRequest(
+            player_id=_PLAYER,
+            opponent_id=_OPPONENT,
+            as_of_date=date(2021, 1, 1),
+        )
+    request = TacticalRecommendationRequest(**_valid_body())
+    assert type(request.as_of_date) is date
+    assert request.as_of_date == date(2021, 1, 1)
 
 
 def test_success_body_has_exactly_the_p11_top_level_shape():
@@ -359,6 +459,26 @@ def test_malformed_json_payload_is_rejected(raw, body_type):
     assert provider.calls == 0
 
 
+@pytest.mark.parametrize("body_type", ["text/plain", "application/octet-stream"])
+def test_incorrect_media_types_fail_with_the_same_closed_422(body_type):
+    provider = _provider_for("available")
+    response = _client(provider).post(
+        _POST_PATH,
+        content=json.dumps(_valid_body()).encode("utf-8"),
+        headers={"Content-Type": body_type},
+    )
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "reason_code": "invalid_request",
+            "stage": "request_validation",
+            "message": "La request no cumple el contrato de entrada cerrado del servicio.",
+            "retryable": False,
+        }
+    }
+    assert provider.calls == 0
+
+
 # --------------------------------------------------------------------------
 # Rutas fuera del contrato
 # --------------------------------------------------------------------------
@@ -366,10 +486,16 @@ def test_malformed_json_payload_is_rejected(raw, body_type):
 
 def test_undocumented_paths_stay_outside_the_contract():
     client = _client(_provider_for("available"))
-    assert client.get("/").status_code == 404
-    assert client.get(_POST_PATH).status_code == 405
-    assert client.post(_HEALTH_PATH).status_code == 405
-    assert "error" not in client.get("/").json()
+    responses = (
+        client.get("/"),
+        client.get(_POST_PATH),
+        client.post(_HEALTH_PATH),
+    )
+    assert [response.status_code for response in responses] == [404, 405, 405]
+    for response in responses:
+        assert response.content == b""
+        assert "detail" not in response.text
+        assert _REQUEST_ID_RE.fullmatch(response.headers["x-request-id"])
 
 
 def test_apps_are_independent_per_injected_provider():
@@ -390,23 +516,45 @@ def test_openapi_is_semantically_stable_across_calls():
     second = json.dumps(client.get("/openapi.json").json(), sort_keys=True)
     assert first == second
     spec = client.get("/openapi.json").json()
+    assert set(spec["paths"]) == {_HEALTH_PATH, _POST_PATH}
+    assert set(spec["paths"][_HEALTH_PATH]) == {"get"}
+    assert set(spec["paths"][_POST_PATH]) == {"post"}
     assert spec["paths"][_POST_PATH]["post"]["operationId"] == "tactical_recommendation_post"
     assert spec["paths"][_HEALTH_PATH]["get"]["operationId"] == "tactical_recommendation_health"
     spec_text = json.dumps(spec)
     for hidden_pattern in ("P03", "P07", "P08", "P09"):
         assert f'"{hidden_pattern}"' not in spec_text
+    _sentinel_scan(
+        spec_text,
+        "PLAYER_SECRET_123",
+        "OPPONENT_SECRET_456",
+        "C:\\private\\secret",
+        "/Users/private/secret",
+        "\\\\server\\share\\secret",
+        "~/secret",
+        "../secret",
+        "file:///secret",
+        "2021-05-01",
+        "6f27",
+    )
 
 
 def test_openapi_documents_the_exact_p11_response_schema():
     spec = _client(_provider_for("available")).get("/openapi.json").json()
     post = spec["paths"][_POST_PATH]["post"]
-    schema = post["responses"]["200"]["content"]["application/json"]["schema"]
+    schema = _resolve_schema(
+        spec,
+        post["responses"]["200"]["content"]["application/json"]["schema"],
+    )
     assert schema["type"] == "object"
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == {
         item.name for item in fields(TacticalRecommendationResponse)
     }
     assert schema["properties"]["cards"]["type"] == "array"
+    assert schema["properties"]["cards"]["items"] == {
+        "$ref": "#/components/schemas/TacticalPatternCardSchema"
+    }
     assert schema["properties"]["executor_weight"]["type"] == "number"
     assert schema["properties"]["minimum_labeled_activations"]["type"] == "integer"
     assert schema["properties"]["global_cross_pattern_ranking"]["type"] == "boolean"
@@ -423,6 +571,65 @@ def test_openapi_documents_the_exact_p11_response_schema():
         "message",
         "retryable",
     }
+    expected_contract_fields = {
+        "PublicEvidenceComponentSchema": PublicEvidenceComponent,
+        "TacticalRecommendationOptionSchema": TacticalRecommendationOption,
+        "TacticalPatternCardSchema": TacticalPatternCard,
+        "TacticalRecommendationResponseSchema": TacticalRecommendationResponse,
+    }
+    for schema_name, contract_type in expected_contract_fields.items():
+        component = components[schema_name]
+        assert component["additionalProperties"] is False
+        assert tuple(component["properties"]) == tuple(
+            item.name for item in fields(contract_type)
+        )
+        assert set(component["required"]) == {
+            item.name for item in fields(contract_type)
+        }
+    assert tuple(components["CardReconciliationsSchema"]["properties"]) == tuple(
+        CARD_RECONCILIATIONS
+    )
+    assert tuple(components["ResponseReconciliationsSchema"]["properties"]) == tuple(
+        RESPONSE_RECONCILIATIONS
+    )
+    option_schema = components["TacticalRecommendationOptionSchema"]
+    assert option_schema["properties"]["executor_evidence"] == {
+        "$ref": "#/components/schemas/PublicEvidenceComponentSchema"
+    }
+    assert option_schema["properties"]["opponent_allowed_evidence"] == {
+        "$ref": "#/components/schemas/PublicEvidenceComponentSchema"
+    }
+    card_schema = components["TacticalPatternCardSchema"]
+    assert card_schema["properties"]["options"]["items"] == {
+        "$ref": "#/components/schemas/TacticalRecommendationOptionSchema"
+    }
+    for compact_partition in (
+        "ranked_options",
+        "top_options",
+        "abstained_options",
+    ):
+        assert card_schema["properties"][compact_partition]["items"] == {
+            "type": "string"
+        }
+    for component in components.values():
+        if component.get("type") == "object":
+            assert component.get("additionalProperties") is False
+
+
+def test_openapi_documents_the_exact_health_contract():
+    spec = _client(_provider_for("available")).get("/openapi.json").json()
+    schema = _resolve_schema(
+        spec,
+        spec["paths"][_HEALTH_PATH]["get"]["responses"]["200"]["content"]
+        ["application/json"]["schema"],
+    )
+    assert set(schema["properties"]) == {"api_version", "service", "status"}
+    assert set(schema["required"]) == {"api_version", "service", "status"}
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["api_version"]["const"] == "v1"
+    assert schema["properties"]["service"]["const"] == "tactical-recommendation-api"
+    assert schema["properties"]["status"]["const"] == "ok"
+    assert "timestamp" not in json.dumps(schema).lower()
 
 
 def test_openapi_documents_the_closed_request_schema():
@@ -438,7 +645,26 @@ def test_openapi_documents_the_closed_request_schema():
         "opponent_id",
         "as_of_date",
     }
+    assert set(request_schema["properties"]) == {
+        "player_id",
+        "opponent_id",
+        "as_of_date",
+    }
+    assert request_schema["additionalProperties"] is False
     assert request_schema["properties"]["as_of_date"]["type"] == "string"
+    assert request_schema["properties"]["as_of_date"]["format"] == "date"
+    request_text = json.dumps(request_schema, sort_keys=True)
+    for knob in (
+        "top_k",
+        "weights",
+        "thresholds",
+        "scope",
+        "policy",
+        "patterns",
+        "fallback",
+        "smoothing",
+    ):
+        assert knob not in request_text
 
 
 # --------------------------------------------------------------------------
@@ -519,3 +745,52 @@ def test_unexpected_failure_logs_internal_rejection_without_stack(caplog):
     assert event["reason_code"] == "internal_error"
     assert event["stage"] == "internal"
     _sentinel_scan(json.dumps(event), _PLAYER, "trace", "/Users/x", "RuntimeError")
+
+
+def test_generic_fastapi_handler_is_reached_and_redacts_every_privacy_sentinel(
+    caplog, monkeypatch
+):
+    sentinels = (
+        "PLAYER_SECRET_123",
+        "OPPONENT_SECRET_456",
+        "C:\\private\\secret",
+        "/Users/private/secret",
+        "\\\\server\\share\\secret",
+        "~/secret",
+        "../secret",
+        "file:///secret",
+        "2021-05-01",
+        "6f27",
+    )
+
+    def unexpected(self, query):
+        raise RuntimeError(" ".join(sentinels))
+
+    generated_ids = []
+
+    def fake_uuid4():
+        generated_ids.append("f" * 32)
+        return SimpleNamespace(hex="f" * 32)
+
+    monkeypatch.setattr(TacticalRecommendationService, "recommend", unexpected)
+    monkeypatch.setattr(api_module.uuid, "uuid4", fake_uuid4)
+    app = create_app(_provider_for("available"))
+    assert Exception in app.exception_handlers
+    client = TestClient(app, raise_server_exceptions=False)
+    with caplog.at_level(logging.INFO, logger=api_module.API_LOGGER_NAME):
+        response = client.post(_POST_PATH, json=_valid_body())
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "reason_code": "internal_error",
+            "stage": "internal",
+            "message": "Fallo interno sin clasificar del servicio.",
+            "retryable": False,
+        }
+    }
+    exposed = response.content.decode("utf-8") + json.dumps(dict(response.headers))
+    exposed += " ".join(record.getMessage() for record in caplog.records)
+    _sentinel_scan(exposed, *sentinels, "RuntimeError", "traceback")
+    assert len(_logged_events(caplog)) == 1
+    assert generated_ids == ["f" * 32]
+    assert response.headers["x-request-id"] == "f" * 32
