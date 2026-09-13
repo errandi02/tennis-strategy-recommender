@@ -163,7 +163,11 @@ RESPONSE_RECONCILIATIONS: Final = MappingProxyType(
 
 _SHA256 = re.compile(r"^[0-9A-F]{64}$")
 _SAFE_TEXT = re.compile(r"^[^\x00-\x1f\x7f]+$")
-_WINDOWS_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_WINDOWS_PATH = re.compile(r"(?i)(?<!\w)[A-Z]:[\\/]")
+_UNC_PATH = re.compile(r"(?<![\w:])(?:\\\\|//)[^\s]")
+_ROOTED_LOCAL_PATH = re.compile(r"(?<![\w:>/\\])[\\/](?![\\/])[^\s]")
+_HOME_PATH = re.compile(r"(?<!\w)~[\\/][^\s]")
+_LOCAL_FILE_URI = re.compile(r"(?i)\b(?:file|vscode-file):[\\/]{2,}")
 _FORBIDDEN_PUBLIC_KEYS: Final = frozenset(
     {
         "match_id",
@@ -280,6 +284,9 @@ class PublicEvidenceComponent:
     success_rate: float | None
     wilson_lower: float | None
     wilson_upper: float | None
+
+    def __post_init__(self) -> None:
+        validate_public_evidence_component(self)
 
 
 @dataclass(frozen=True)
@@ -562,6 +569,43 @@ def validate_public_evidence_component(component: PublicEvidenceComponent) -> No
             raise TacticalRecommendationContractError(
                 "Tasa o Wilson no reconcilian con el upstream."
             )
+    state = component.evidence_state
+    empty_states = {
+        TacticalCategoryEvidenceState.NO_OBSERVED_CATEGORY.value,
+        TacticalCategoryEvidenceState.NOT_APPLICABLE.value,
+        TacticalCategoryEvidenceState.NOT_AVAILABLE.value,
+    }
+    if state == TacticalCategoryEvidenceState.AVAILABLE.value:
+        if (
+            component.labeled_activations < MINIMUM_LABELED_ACTIVATIONS
+            or component.distinct_matches < MINIMUM_DISTINCT_MATCHES
+        ):
+            raise TacticalRecommendationContractError(
+                "Evidence available no cumple los minimos congelados 50/5."
+            )
+    elif state == TacticalCategoryEvidenceState.INSUFFICIENT_LABELED_ATTEMPTS.value:
+        if component.labeled_activations >= MINIMUM_LABELED_ACTIVATIONS:
+            raise TacticalRecommendationContractError(
+                "Estado insufficient_labeled_attempts no reconcilia."
+            )
+    elif state == TacticalCategoryEvidenceState.INSUFFICIENT_MATCHES.value:
+        if (
+            component.labeled_activations < MINIMUM_LABELED_ACTIVATIONS
+            or not 0 < component.distinct_matches < MINIMUM_DISTINCT_MATCHES
+        ):
+            raise TacticalRecommendationContractError(
+                "Estado insufficient_matches no reconcilia."
+            )
+    elif state in empty_states and (
+        component.labeled_activations != 0
+        or component.successes != 0
+        or component.failures != 0
+        or component.distinct_matches != 0
+        or any(value is not None for value in values)
+    ):
+        raise TacticalRecommendationContractError(
+            "Estado sin evidencia conserva metricas publicas."
+        )
 
 
 def validate_tactical_recommendation_option(
@@ -577,7 +621,11 @@ def validate_tactical_recommendation_option(
             "pattern_id fuera del catalogo publico cerrado."
         )
     opportunity, actor = _PUBLIC_PATTERN_CONTRACT[option.pattern_id]
-    if option.category not in _PUBLIC_CATALOG[option.pattern_id] or option.category in _FORBIDDEN_CATEGORIES:
+    if (
+        type(option.category) is not str
+        or option.category not in _PUBLIC_CATALOG[option.pattern_id]
+        or option.category in _FORBIDDEN_CATEGORIES
+    ):
         raise TacticalRecommendationContractError("Categoria fuera del catalogo cerrado.")
     if (
         type(option.tactical_opportunity) is not str
@@ -621,6 +669,8 @@ def validate_tactical_recommendation_option(
             raise TacticalRecommendationContractError(
                 "Envolvente descriptiva debe ser tuple de dos bounds."
             )
+        _unit(envelope[0], "descriptive_uncertainty_envelope.lower")
+        _unit(envelope[1], "descriptive_uncertainty_envelope.upper")
         executor = option.executor_evidence
         opponent = option.opponent_allowed_evidence
         expected_score = (
@@ -738,11 +788,7 @@ def validate_tactical_pattern_card(card: TacticalPatternCard) -> None:
             "Ranked y abstenciones no particionan las opciones."
         )
     expected_ranked = tuple(sorted(ranked, key=lambda item: _public_rank_key(card.pattern_id, item)))
-    if (
-        len(card.ranked_options) != len(expected_ranked)
-        or [item.category for item in card.ranked_options]
-        != [item.category for item in expected_ranked]
-    ):
+    if card.ranked_options != expected_ranked:
         raise TacticalRecommendationContractError("Orden del ranking invalido.")
     tie_group = 0
     previous: tuple[object, ...] | None = None
@@ -762,11 +808,7 @@ def validate_tactical_pattern_card(card: TacticalPatternCard) -> None:
     expected_abstained = tuple(
         sorted(abstained, key=lambda item: _feature_name(card.pattern_id, item.category))
     )
-    if (
-        len(card.abstained_options) != len(expected_abstained)
-        or [item.category for item in card.abstained_options]
-        != [item.category for item in expected_abstained]
-    ):
+    if card.abstained_options != expected_abstained:
         raise TacticalRecommendationContractError("Orden de abstenciones invalido.")
     if not (
         type(card.requested_top_k) is int and card.requested_top_k == REQUESTED_TOP_K
@@ -782,11 +824,7 @@ def validate_tactical_pattern_card(card: TacticalPatternCard) -> None:
         expected_top = tuple(
             item for item in expected_ranked if item.tie_group <= boundary
         )
-    if (
-        len(card.top_options) != len(expected_top)
-        or [item.category for item in card.top_options]
-        != [item.category for item in expected_top]
-    ):
+    if card.top_options != expected_top:
         raise TacticalRecommendationContractError("Top-k no reconcilia.")
     if (
         type(card.effective_top_k) is not int
@@ -1002,8 +1040,11 @@ def _validate_public_tree(value: object, *, key: str | None = None) -> None:
         lowered = value.lower()
         if (
             any(fragment in lowered for fragment in _FORBIDDEN_TEXT_FRAGMENTS)
-            or _WINDOWS_PATH.match(value) is not None
-            or value.startswith(("/", "\\\\"))
+            or _WINDOWS_PATH.search(value) is not None
+            or _UNC_PATH.search(value) is not None
+            or _ROOTED_LOCAL_PATH.search(value) is not None
+            or _HOME_PATH.search(value) is not None
+            or _LOCAL_FILE_URI.search(value) is not None
             or any(ord(character) < 32 for character in value)
         ):
             raise TacticalRecommendationContractError("Texto operativo no autorizado.")

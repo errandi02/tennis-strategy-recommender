@@ -8,6 +8,7 @@ from datetime import date
 from hashlib import sha256
 import inspect
 import json
+import math
 from pathlib import Path
 import re
 
@@ -94,6 +95,25 @@ def _ok(labeled: int, successes: int, distinct: int = 10):
 
 def _insufficient(labeled: int = 30, successes: int = 15, distinct: int = 5):
     return (200, 150, 100, labeled, labeled, successes, distinct)
+
+
+def _manual_wilson(successes: int, trials: int):
+    z = 1.959963984540054
+    rate = successes / trials
+    z_squared = z * z
+    denominator = 1.0 + z_squared / trials
+    centre = (rate + z_squared / (2.0 * trials)) / denominator
+    margin = (
+        z
+        * math.sqrt(
+            rate * (1.0 - rate) / trials
+            + z_squared / (4.0 * trials * trials)
+        )
+        / denominator
+    )
+    lower = 0.0 if successes == 0 else centre - margin
+    upper = 1.0 if successes == trials else centre + margin
+    return rate, lower, upper
 
 
 def _category(query, pattern_id, feature_name, perspective, spec):
@@ -377,6 +397,18 @@ def _card(response, pattern_id):
 
 def _option(card, category):
     return next(item for item in card.options if item.category == category)
+
+
+def _unchecked_replace(value, **changes):
+    """Construye una mutacion adversarial sin ejecutar __post_init__."""
+    clone = object.__new__(type(value))
+    for field in fields(value):
+        object.__setattr__(
+            clone,
+            field.name,
+            changes.get(field.name, getattr(value, field.name)),
+        )
+    return clone
 
 
 @pytest.fixture(scope="module")
@@ -780,16 +812,20 @@ def test_score_is_exact_equal_weight_combination(rich_response):
     executor = option.executor_evidence
     opponent = option.opponent_allowed_evidence
     assert option.score == 0.5 * executor.success_rate + 0.5 * opponent.success_rate
-    expected_rate, expected_lower, expected_upper = tactical_wilson_interval(
-        90, 100, feature_name="p02.first_serve_direction.5"
-    )
+    expected_rate, expected_lower, expected_upper = _manual_wilson(90, 100)
     assert executor.success_rate == expected_rate == 0.9
-    assert executor.wilson_lower == expected_lower
-    assert executor.wilson_upper == expected_upper
+    assert executor.wilson_lower == pytest.approx(expected_lower, abs=1e-15)
+    assert executor.wilson_upper == pytest.approx(expected_upper, abs=1e-15)
+    opponent_rate, opponent_lower, opponent_upper = _manual_wilson(40, 80)
+    assert opponent.success_rate == opponent_rate == 0.5
+    assert opponent.wilson_lower == pytest.approx(opponent_lower, abs=1e-15)
+    assert opponent.wilson_upper == pytest.approx(opponent_upper, abs=1e-15)
     assert option.score == 0.5 * 0.9 + 0.5 * (40 / 80)
-    assert option.descriptive_uncertainty_envelope == (
-        0.5 * executor.wilson_lower + 0.5 * opponent.wilson_lower,
-        0.5 * executor.wilson_upper + 0.5 * opponent.wilson_upper,
+    assert option.descriptive_uncertainty_envelope[0] == pytest.approx(
+        0.5 * expected_lower + 0.5 * opponent_lower, abs=1e-15
+    )
+    assert option.descriptive_uncertainty_envelope[1] == pytest.approx(
+        0.5 * expected_upper + 0.5 * opponent_upper, abs=1e-15
     )
     lower, upper = option.descriptive_uncertainty_envelope
     assert lower <= option.score <= upper
@@ -830,6 +866,30 @@ def test_wilson_limits_zero_of_n_and_n_of_n():
         assert component.success_rate == 1.0
         assert component.wilson_upper == 1.0
     assert zero.executor_evidence.wilson_upper < 1.0
+
+
+def test_uncertainty_envelope_bounds_require_real_floats():
+    response = _response(_score_specs())
+    zero = _option(_card(response, "P04"), "2")
+    full = _option(_card(response, "P04"), "3")
+    assert zero.descriptive_uncertainty_envelope[0] == 0.0
+    assert full.descriptive_uncertainty_envelope[1] == 1.0
+    with pytest.raises(TacticalRecommendationContractError):
+        replace(
+            zero,
+            descriptive_uncertainty_envelope=(
+                False,
+                zero.descriptive_uncertainty_envelope[1],
+            ),
+        )
+    with pytest.raises(TacticalRecommendationContractError):
+        replace(
+            full,
+            descriptive_uncertainty_envelope=(
+                full.descriptive_uncertainty_envelope[0],
+                True,
+            ),
+        )
 
 
 def test_zero_trials_components_are_absent_and_none(rich_response):
@@ -918,9 +978,95 @@ def test_component_type_scope_and_value_mutations_are_rejected(
     rich_response, field, value
 ):
     option = _option(_card(rich_response, "P02"), "4")
-    mutated = replace(option.executor_evidence, **{field: value})
     with pytest.raises(TacticalRecommendationContractError):
-        replace(option, executor_evidence=mutated)
+        replace(option.executor_evidence, **{field: value})
+
+
+def test_public_evidence_component_is_always_valid_and_validated_in_isolation(
+    rich_response,
+):
+    available = _option(_card(rich_response, "P02"), "4").executor_evidence
+    validate_public_evidence_component(available)
+    assert available.labeled_activations >= 50
+    assert available.distinct_matches >= 5
+
+    insufficient = _option(
+        _card(rich_response, "P05"), "8"
+    ).executor_evidence
+    assert insufficient.evidence_state == "insufficient_labeled_attempts"
+    with pytest.raises(TacticalRecommendationContractError, match="50/5"):
+        replace(insufficient, evidence_state="available")
+    with pytest.raises(
+        TacticalRecommendationContractError,
+        match="insufficient_labeled_attempts",
+    ):
+        replace(available, evidence_state="insufficient_labeled_attempts")
+
+    insufficient_matches = replace(
+        available,
+        evidence_state="insufficient_matches",
+        distinct_matches=4,
+    )
+    validate_public_evidence_component(insufficient_matches)
+    with pytest.raises(
+        TacticalRecommendationContractError, match="insufficient_matches"
+    ):
+        replace(insufficient_matches, distinct_matches=5)
+    with pytest.raises(
+        TacticalRecommendationContractError, match="conserva metricas"
+    ):
+        replace(available, evidence_state="not_available")
+
+
+def test_public_evidence_threshold_boundaries_are_inclusive(rich_response):
+    component = _option(_card(rich_response, "P02"), "6").executor_evidence
+    assert component.labeled_activations == 50
+    boundary = replace(component, distinct_matches=5)
+    assert boundary.evidence_state == "available"
+    validate_public_evidence_component(boundary)
+
+
+def test_invalid_component_cannot_cross_any_public_response_boundary(rich_response):
+    card = _card(rich_response, "P02")
+    option = _option(card, "4")
+    invalid_component = _unchecked_replace(
+        option.executor_evidence, distinct_matches=4
+    )
+    invalid_option = _unchecked_replace(
+        option, executor_evidence=invalid_component
+    )
+
+    def substituted(items):
+        return tuple(
+            invalid_option if item.category == option.category else item
+            for item in items
+        )
+
+    invalid_card = _unchecked_replace(
+        card,
+        options=substituted(card.options),
+        ranked_options=substituted(card.ranked_options),
+        top_options=substituted(card.top_options),
+    )
+    cards = tuple(
+        invalid_card if item.pattern_id == card.pattern_id else item
+        for item in rich_response.cards
+    )
+    resigned = _unchecked_replace(
+        rich_response,
+        cards=cards,
+        fingerprint=contract._public_fingerprint_of(
+            rich_response.status, rich_response.status_reason_codes, cards
+        ),
+    )
+
+    for boundary in (
+        validate_public_tactical_recommendation,
+        canonical_tactical_recommendation_json,
+        tactical_recommendation_fingerprint,
+    ):
+        with pytest.raises(TacticalRecommendationContractError, match="50/5"):
+            boundary(resigned)
 
 
 def test_component_wilson_recomputation_detects_mutations(rich_response):
@@ -1094,6 +1240,39 @@ def test_ranking_field_mutations_are_rejected(rich_response):
         replace(card, ranked_options=tuple(reversed(card.ranked_options)))
     with pytest.raises(TacticalRecommendationContractError):
         replace(card, abstained_options=tuple(reversed(card.abstained_options)))
+
+
+def test_ranking_subsets_require_exact_canonical_option_objects(rich_response):
+    foreign = _response(_all_available_specs())
+    card = _card(rich_response, "P02")
+    foreign_card = _card(foreign, "P02")
+    foreign_by_category = {item.category: item for item in foreign_card.options}
+    with pytest.raises(TacticalRecommendationContractError, match="ranking"):
+        replace(
+            card,
+            ranked_options=tuple(
+                foreign_by_category[item.category] for item in card.ranked_options
+            ),
+        )
+    with pytest.raises(TacticalRecommendationContractError, match="Top-k"):
+        replace(
+            card,
+            top_options=tuple(
+                foreign_by_category[item.category] for item in card.top_options
+            ),
+        )
+
+    abstained_card = _card(rich_response, "P05")
+    zero_card = _card(_response(_zero_specs()), "P05")
+    zero_by_category = {item.category: item for item in zero_card.options}
+    with pytest.raises(TacticalRecommendationContractError, match="abstenciones"):
+        replace(
+            abstained_card,
+            abstained_options=tuple(
+                zero_by_category[item.category]
+                for item in abstained_card.abstained_options
+            ),
+        )
 
 
 def test_position_and_tie_mutations_on_options_are_rejected(rich_response):
@@ -1307,6 +1486,24 @@ def test_identity_values_cannot_enter_public_fields():
             option,
             executor_evidence=replace(option.executor_evidence, perspective="Alice"),
         )
+    with pytest.raises(TacticalRecommendationContractError):
+        replace(option, category=object())
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        r"failure at C:\Users\alice\secret",
+        r"failure at \\server\share\secret",
+        "failure at /Users/alice/secret",
+        "failure at /home/alice/secret",
+        "failure at ~/secret",
+        "failure at vscode-file:///Users/alice/secret",
+    ),
+)
+def test_public_tree_rejects_embedded_local_paths(value):
+    with pytest.raises(TacticalRecommendationContractError):
+        contract._validate_public_tree({"value": value})
 
 
 def test_serialization_is_canonical_deterministic_and_compact(rich_response):
