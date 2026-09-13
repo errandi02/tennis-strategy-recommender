@@ -1,0 +1,15 @@
+metric,count,denominator,ratio,status
+source,1280408,1280408,1,reconciled
+development,1035760,1280408,0.808929653672892,reconciled
+excluded_test,244648,1280408,0.191070346327108,reconciled
+attempts_total,1426863,1035760,1.37760002317139,reconciled
+first_serve_attempts,1035760,1035760,1,reconciled
+second_serve_attempts,391103,1035760,0.377600023171391,reconciled
+second_with_documented_fault,382143,391103,0.97709043397775,reconciled
+second_without_documented_fault,8960,391103,0.0229095660222499,reconciled
+cache_entries,490548,1426863,0.34379474413451,reconciled
+cache_hits,936315,1426863,0.65620525586549,reconciled
+cache_misses,490548,1426863,0.34379474413451,reconciled
+observations,1426863,1426863,1,reconciled
+validation_matches,1805,5993,0.301184715501418,reconciled
+target_orientations,3610,3610,1,reconciled

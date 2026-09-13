@@ -1,0 +1,25 @@
+check,observed,expected,passed,severity,details
+source_population_reconciled,1280408,1280408,True,error,physical rows partitioned before analytical transformation
+test_sealed_before_transformations,sealed,sealed,True,error,test read physically but excluded methodologically
+history_on_or_after_target_date,0,0,True,error,exclusive target-date history
+target_match_rows_used,0,0,True,error,exclusive target-date history
+same_day_rows_used,0,0,True,error,exclusive target-date history
+future_rows_used,0,0,True,error,exclusive target-date history
+test_rows_used,0,0,True,error,exclusive target-date history
+test_attempts_used,0,0,True,error,exclusive target-date history
+test_labels_used,0,0,True,error,exclusive target-date history
+test_profiles_computed,0,0,True,error,exclusive target-date history
+test_evidence_computed,0,0,True,error,exclusive target-date history
+test_scores_computed,0,0,True,error,exclusive target-date history
+test_rankings_computed,0,0,True,error,exclusive target-date history
+test_recommendations_generated,0,0,True,error,exclusive target-date history
+attempt_keys_unique,1426863,1426863,True,error,attempt unit
+cache_reconciled,1426863,1426863,True,error,local immutable reuse
+actors_reconciled,1426863,1426863,True,error,server orientation with pattern ownership upstream
+labels_reconciled,1426863,1426863,True,error,label applied after encoding
+global_only_scope,global_only,global_only,True,error,no fallback
+component_only_no_p09_scoring,P02|P04|P05|P06,P02|P04|P05|P06,True,error,P09 mask retained but profile features excluded
+rankings_separated_by_pattern,4,4,True,error,no global ranking
+target_order_canonical,3610,3610,True,error,date match orientation
+subquadratic_history_index,0,0,True,error,actor/date streams with bisect
+all_contract_reconciliations,8,8,True,error,closed reconciliations

@@ -644,6 +644,37 @@ cero recomendaciones, evaluaciones o selección metodológica sobre el test. Los
 rankings son asociaciones históricas descriptivas; no demuestran causalidad,
 optimalidad táctica ni generalización al test sellado.
 
+#### P10: pipeline tactico comun sellado
+
+P10 integra las capas ya publicadas en la unidad
+`target_match x target_player_orientation`. Construye evidencia historica
+exclusiva anterior al partido objetivo y prioriza por separado P02, P04, P05 y
+P06. Mantiene la politica `component_only`, scope `global_only`, minimos 50/5,
+combinacion descriptiva 50/50 y un top 3 independiente por patron; no existe un
+ranking global entre patrones.
+
+La ejecucion real publicada proceso 1.280.408 filas fuente, sello 244.648 filas
+y 1.531 partidos del test 2024--2026, y construyo 1.426.863 intentos de
+desarrollo. Sobre 1.805 partidos de validacion (3.610 orientaciones), el estado
+es `partially_available`: 2.682 orientaciones disponibles, 116 parcialmente
+disponibles y 812 no disponibles. Se puntuaron 33.944 de 93.860 candidatos; los
+59.916 restantes conservaron su abstencion. El test no se evaluo ni intervino
+en seleccion metodologica.
+
+Artefactos agregados versionables:
+
+- `reports/tactical_recommender_pipeline_summary.json`
+- `reports/tables/tactical_recommender_pipeline_population.csv`
+- `reports/tables/tactical_recommender_pipeline_availability.csv`
+- `reports/tables/tactical_recommender_pipeline_rankings.csv`
+- `reports/tables/tactical_recommender_pipeline_diagnostics.csv`
+
+La ejecucion excepcional empleada para congelar estos resultados duro unas
+12 h 33 min 49 s. El cierre posterior elimina una validacion reconstructiva
+duplicada durante la publicacion sin alterar los bytes publicados. Los scores y
+rankings son asociaciones historicas descriptivas: no prueban causalidad,
+optimalidad tactica ni generalizacion al test sellado.
+
 ## Analisis reproducible de cobertura
 
 El analisis de cobertura utiliza `data/processed/points_enriched.parquet` y
