@@ -6,6 +6,7 @@ import io
 import json
 import math
 from pathlib import Path
+import re
 from types import SimpleNamespace
 
 import pandas as pd
@@ -371,10 +372,87 @@ def test_not_available_is_closed_header_only_and_sanitized():
     unavailable = p08.not_available_result(RuntimeError(str(p08.ROOT / "secret")), "source_validation", partial_diagnostics={"source_rows": 7})
     assert unavailable.summary["analysis_status"] == "not_available"
     assert unavailable.summary["reason_codes"] == ["execution_failed"]
-    assert unavailable.summary["failure"]["message"] == "<repository>\\secret"
+    assert unavailable.summary["failure"]["message"] == "<repository>/secret"
     assert unavailable.summary["partial_diagnostics"] == {"source_rows": 7}
     assert all(frame.empty for frame in (unavailable.by_state, unavailable.by_group, unavailable.marker_context, unavailable.outcomes))
     assert all(len(payload.decode("utf-8").splitlines()) == 1 for payload in p08.serialize_artifacts(unavailable)[1:])
+
+
+def test_repository_paths_are_sanitized_portably_and_deterministically():
+    parts = [part for part in re.split(r"[\\/]+", str(p08.ROOT)) if part]
+    prefix = "\\" if str(p08.ROOT).startswith(("/", "\\")) else ""
+    windows_root = prefix + "\\".join(parts)
+    posix_root = ("/" if prefix else "") + "/".join(parts)
+    mixed_root = prefix + "".join(
+        part if index == 0 else ("/" if index % 2 else "\\") + part
+        for index, part in enumerate(parts)
+    )
+
+    assert p08._sanitize_message(windows_root) == "<repository>"
+    assert p08._sanitize_message(f"{posix_root}/secret") == "<repository>/secret"
+    assert p08._sanitize_message(f"{mixed_root}\\one/two") == "<repository>/one/two"
+    assert p08._sanitize_message(
+        f"first={windows_root}\\one; second={posix_root}/two/three"
+    ) == "first=<repository>/one; second=<repository>/two/three"
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        r"C:\Users\alice\secret",
+        r"\\server\share\secret",
+        "/Users/alice/secret",
+        "/home/alice/secret",
+        "~/secret",
+        "../secret",
+        "folder/../../secret",
+        "file:///Users/alice/secret",
+        r"file:///C:\Users\alice\secret",
+        "vscode-file:///Users/alice/secret",
+    ),
+)
+def test_non_repository_local_paths_are_redacted(message):
+    sanitized = p08._sanitize_message(message)
+    assert sanitized == "<absolute-path>" or sanitized.endswith("/<absolute-path>")
+    assert "secret" not in sanitized
+    assert ".." not in sanitized
+
+
+def test_repository_file_uri_and_traversal_are_sanitized_without_leaking():
+    posix_root = str(p08.ROOT).replace("\\", "/")
+    assert p08._sanitize_message(f"file:///{posix_root}/secret") == "<repository>/secret"
+    assert p08._sanitize_message(f"{posix_root}/../secret") == "<absolute-path>"
+
+
+@pytest.mark.parametrize(
+    ("root", "message"),
+    (
+        (r"C:\work\project", r"C:/work\project/secret"),
+        ("/Users/alice/project", "/Users/alice/project/secret"),
+        ("/home/alice/project", r"\home/alice\project/secret"),
+        ("/Users/alice/project", "file:////Users/alice/project/secret"),
+    ),
+)
+def test_repository_sanitization_is_independent_of_host_path_flavour(monkeypatch, root, message):
+    monkeypatch.setattr(p08, "ROOT", root)
+    assert p08._sanitize_message(message) == "<repository>/secret"
+
+
+def test_messages_without_local_paths_keep_their_allowed_content():
+    message = "synthetic ratio 1/2; public URL https://example.test/a/b"
+    assert p08._sanitize_message(message) == message
+
+
+@pytest.mark.parametrize(
+    "unsafe_message",
+    (r"C:\Users\alice\secret", "/Users/alice/secret", "~/secret", "../secret"),
+)
+def test_not_available_contract_rejects_unsanitized_local_paths(unsafe_message):
+    unavailable = p08.not_available_result(RuntimeError("synthetic"), "source_validation")
+    summary = json.loads(json.dumps(unavailable.summary))
+    summary["failure"]["message"] = unsafe_message
+    with pytest.raises(p08.FeasibilityContractError, match="ruta absoluta"):
+        p08.validate_result(resign(replace(unavailable, summary=summary)))
 
 
 def test_not_available_with_any_partial_row_is_rejected():

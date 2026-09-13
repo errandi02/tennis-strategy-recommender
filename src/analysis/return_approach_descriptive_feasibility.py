@@ -753,7 +753,7 @@ def _validate_not_available(result: FeasibilityResult) -> None:
     failure = summary["failure"]
     if set(failure) != {"stage", "type", "message"} or failure["stage"] not in FAILURE_STAGES or not all(type(failure[key]) is str and failure[key] for key in ("type", "message")):
         raise FeasibilityContractError("Diagnostico de fallo invalido.")
-    if str(ROOT) in failure["message"] or "C:\\Users\\" in failure["message"]:
+    if _sanitize_message(failure["message"]) != failure["message"]:
         raise FeasibilityContractError("Diagnostico contiene ruta absoluta.")
     if not isinstance(summary["partial_diagnostics"], dict):
         raise FeasibilityContractError("Diagnostico parcial invalido.")
@@ -932,8 +932,47 @@ def _performance_path(value: str) -> Path:
 
 
 def _sanitize_message(message: str) -> str:
-    sanitized = message.replace(str(ROOT), "<repository>")
-    return re.sub(r"(?i)(?<![\w])(?:[a-z]:\\)[^\s,;]+", "<absolute-path>", sanitized)
+    path_segment = r"[^\\/\s,;:'\"<>\)\]\}]+"
+    root_text = str(ROOT)
+    root_parts = [part for part in re.split(r"[\\/]+", root_text) if part]
+    if root_text.startswith(("\\\\", "//")):
+        root_prefix = r"[\\/]{2}"
+    elif root_text.startswith(("/", "\\")):
+        root_prefix = r"[\\/]"
+    else:
+        root_prefix = ""
+    root_pattern = re.compile(
+        r"(?<!\w)"
+        + root_prefix
+        + r"[\\/]+".join(re.escape(part) for part in root_parts)
+        + rf"(?P<suffix>(?:[\\/]+{path_segment})*)"
+        + r"(?=$|[\s,;:'\"<>\)\]\}])",
+        flags=re.IGNORECASE,
+    )
+
+    def replace_repository_path(match: re.Match[str]) -> str:
+        suffix_parts = [
+            part for part in re.split(r"[\\/]+", match.group("suffix")) if part
+        ]
+        if any(part in {".", ".."} for part in suffix_parts):
+            return "<absolute-path>"
+        return "<repository>" + "".join(f"/{part}" for part in suffix_parts)
+
+    sanitized = root_pattern.sub(replace_repository_path, message)
+    sanitized = re.sub(
+        r"(?i)\bfile:(?:[\\/]{2,})(?=<repository>)", "", sanitized
+    )
+    local_path_patterns = (
+        r"(?i)(?<![\w])(?:file|vscode-file):[\\/]{2,}[^\s,;'\"<>\)\]\}]+",
+        r"(?i)(?<![\w])(?:[a-z]:[\\/])[^\s,;:'\"<>\)\]\}]*",
+        r"(?i)(?<![\w:])(?:\\\\|//)[^\s,;:'\"<>\)\]\}]+",
+        r"(?<![\w])~[\\/][^\s,;:'\"<>\)\]\}]+",
+        r"(?<!\w)(?:\.\.[\\/])+(?:[^\s,;:'\"<>\)\]\}]*)",
+        r"(?<![\w:>/\\])/(?!/)[^\\/\s,;:'\"<>\)\]\}]+(?:[\\/][^\s,;:'\"<>\)\]\}]*)*",
+    )
+    for pattern in local_path_patterns:
+        sanitized = re.sub(pattern, "<absolute-path>", sanitized)
+    return sanitized
 
 
 def _write_performance_log(path: Path, payload: Mapping[str, Any]) -> None:
