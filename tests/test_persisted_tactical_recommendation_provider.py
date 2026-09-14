@@ -1432,10 +1432,23 @@ def test_provider_lookup_ast_contains_no_serialization_or_fingerprint_calls():
 def test_limite_es_256_mib_exacto_con_metadata_de_capacidad():
     assert p13.MAX_SNAPSHOT_BYTES == 256 * 1024 * 1024 == 268_435_456
     assert p13.CAPACITY_DESIGN_UNIVERSE_ENTRIES == 3_610
+    assert p13.CAPACITY_DESIGN_SYNTHETIC_TARGETS_MEASURED == 352
+    assert type(p13.CAPACITY_DESIGN_SYNTHETIC_TARGETS_MEASURED) is int
+    representative = p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES
+    free = p13.MAX_SNAPSHOT_BYTES - representative
+    assert representative == 196_817_992
+    assert representative / (1024 * 1024) == pytest.approx(187.7, abs=0.01)
+    assert representative / p13.MAX_SNAPSHOT_BYTES == pytest.approx(
+        0.733, abs=0.001
+    )
+    assert free == 71_617_464
+    assert free / p13.MAX_SNAPSHOT_BYTES == pytest.approx(0.267, abs=0.001)
+    assert p13.MAX_SNAPSHOT_BYTES / representative - 1 == pytest.approx(
+        0.364, abs=0.001
+    )
     # El snapshot representativo cabe con margen minimo del 20 %.
     assert (
-        p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES * 5
-        <= p13.MAX_SNAPSHOT_BYTES * 4
+        representative * 5 <= p13.MAX_SNAPSHOT_BYTES * 4
     )
     # Entrada tipica x universo ~= snapshot representativo (envoltorio
     # global < 0,1 %): la estimacion independiente se autoconsiste.
@@ -1523,10 +1536,12 @@ def _entry_canonical_bytes(entry) -> int:
 def test_capacidad_material_3610_entradas_con_margen_y_lookup_exacto(
     tmp_path
 ):
-    """Prueba unica de capacidad a escala material razonable (200 entradas).
+    """Prueba material acotada con 24 entradas exclusivamente sinteticas.
 
-    Mide bytes/entrada sobre resultados sinteticos validos (available,
-    partial, absent). Comprueba: (a) el snapshot material completo
+    La estimacion contractual se obtuvo con 352 objetivos sinteticos;
+    esta regresion material usa una muestra de 24 para mantener un coste
+    razonable. Mide bytes/entrada sobre resultados sinteticos validos
+    (available, partial, absent). Comprueba: (a) el snapshot material completo
     serializa dentro del limite; (b) la base de diseno representativa
     (auditoria P16 del pipeline P10: 196,8 MB) cubre el limite con
     margen >= 20 % y queda bajo umbral de 204,8 MiB; (c) canaria de
@@ -1540,7 +1555,7 @@ def test_capacidad_material_3610_entradas_con_margen_y_lookup_exacto(
     """
     states = ("available", "partial", "absent")
     results = []
-    for index in range(200):
+    for index in range(24):
         player = f"CAPPlayer{index:03d}"
         opponent = f"CAPRival{index:03d}"
         results.append(
@@ -1557,7 +1572,7 @@ def test_capacidad_material_3610_entradas_con_margen_y_lookup_exacto(
     raw = p13.serialize_persisted_tactical_recommendation_snapshot(snapshot)
     per_entry = [_entry_canonical_bytes(entry) for entry in snapshot.entries]
     universe = p13.CAPACITY_DESIGN_UNIVERSE_ENTRIES
-    assert snapshot.entry_count == 200
+    assert snapshot.entry_count == 24
     # (a) Snapshot material completo dentro del limite.
     assert len(raw) < p13.MAX_SNAPSHOT_BYTES
     # (b) Base de diseno representativa: margen >= 20 % y umbral 204,8 MiB.

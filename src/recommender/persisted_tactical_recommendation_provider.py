@@ -114,15 +114,19 @@ SNAPSHOT_SNAPSHOT_DOMAIN: Final = b"tennis-persisted-tactical-recommendation-sna
 
 # Limite exacto del snapshot (P16, 256 MiB). Proposito exclusivo:
 # snapshots privados offline de generacion unica manual, no hosting.
-# Dimensionamiento (auditoria P16, sintesis auditada, no garantia):
+# Dimensionamiento (auditoria P16 sobre fixtures sinteticos, no medicion real
+# ni garantia de tamano final):
 # - universo objetivo p10_offline: 3.610 entradas (1.805 pares);
-# - entrada representativa medida (pipeline P10): ~54,5 KB
+# - entrada representativa estimada con 352 objetivos sinteticos: ~54,5 KB
 #   (51,6 minimo / 66,7 max por pareja);
-# - snapshot representativo estimado: ~187,7 MiB
-#   (margen 36 % frente al limite; <= 204,8 MiB con +20 %);
+# - snapshot representativo estimado: 196.817.992 B (~187,7 MiB),
+#   73,3 % del limite; quedan 71.617.464 B (26,7 % del limite) y el
+#   limite es aproximadamente 36,4 % mayor que la estimacion;
+#   por tanto cumple el criterio congelado de al menos 20 % libre;
 # - techo adversarial de una entrada (esquema 1.0.0 saturado:
 #   26 candidatos, catalogo cerrado, identificadores a 64 chars):
-#   102,352 B medidos;
+#   102.352 B observados en fixtures sinteticos y techo contractual
+#   conservador redondeado a 110.000 B;
 # - techo adversarial del snapshot (3.610 entradas saturadas):
 #   ~379,1 MiB > limite; el limite es deliberadamente inferior como
 #   defensa final contra ficheros hostiles. Si un snapshot
@@ -132,10 +136,12 @@ SNAPSHOT_SNAPSHOT_DOMAIN: Final = b"tennis-persisted-tactical-recommendation-sna
 MAX_SNAPSHOT_BYTES: Final = 256 * 1024 * 1024
 MAX_ENTRIES: Final = 100_000
 CAPACITY_DESIGN_UNIVERSE_ENTRIES: Final = 3_610
+CAPACITY_DESIGN_SYNTHETIC_TARGETS_MEASURED: Final = 352
 CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES: Final = 54_520
 CAPACITY_DESIGN_MAX_ENTRY_BYTES: Final = 110_000
 CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES: Final = 196_817_992
 CAPACITY_DESIGN_ADVERSARIAL_SNAPSHOT_BYTES: Final = 397_100_000
+# Estimacion conservadora de pico operativo; no medicion de una ejecucion real.
 CAPACITY_DESIGN_MEMORY_PEAK_BYTES: Final = 2_500_000_000
 SNAPSHOT_PURPOSE: Final = (
     "exclusivo para snapshots privados offline de generacion unica manual"
@@ -1409,6 +1415,7 @@ __all__ = (
     "CAPACITY_DESIGN_MAX_ENTRY_BYTES",
     "CAPACITY_DESIGN_MEMORY_PEAK_BYTES",
     "CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES",
+    "CAPACITY_DESIGN_SYNTHETIC_TARGETS_MEASURED",
     "CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES",
     "CAPACITY_DESIGN_UNIVERSE_ENTRIES",
     "MAX_ENTRIES",
