@@ -1422,3 +1422,171 @@ def test_provider_lookup_ast_contains_no_serialization_or_fingerprint_calls():
             elif isinstance(node.func, ast.Attribute):
                 called.add(node.func.attr)
     assert called.isdisjoint(forbidden)
+
+
+# --------------------------------------------------------------------------
+# H. Capacidad (P16): 256 MiB para el universo de 3.610 entradas
+# --------------------------------------------------------------------------
+
+
+def test_limite_es_256_mib_exacto_con_metadata_de_capacidad():
+    assert p13.MAX_SNAPSHOT_BYTES == 256 * 1024 * 1024 == 268_435_456
+    assert p13.CAPACITY_DESIGN_UNIVERSE_ENTRIES == 3_610
+    # El snapshot representativo cabe con margen minimo del 20 %.
+    assert (
+        p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES * 5
+        <= p13.MAX_SNAPSHOT_BYTES * 4
+    )
+    # Entrada tipica x universo ~= snapshot representativo (envoltorio
+    # global < 0,1 %): la estimacion independiente se autoconsiste.
+    estimated = p13.CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES * 3_610
+    delta = abs(estimated - p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES)
+    assert delta * 100 <= p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES
+    # Techo adversarial de entrada x universo = techo adversarial exacto.
+    assert (
+        p13.CAPACITY_DESIGN_MAX_ENTRY_BYTES
+        * p13.CAPACITY_DESIGN_UNIVERSE_ENTRIES
+        == p13.CAPACITY_DESIGN_ADVERSARIAL_SNAPSHOT_BYTES
+    )
+    # Intencion de diseno: el limite cubre lo representativo con margen
+    # y es deliberadamente inferior al techo adversarial (defensa final
+    # contra ficheros hostiles).
+    assert (
+        p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES * 5
+        <= p13.MAX_SNAPSHOT_BYTES * 4
+    )
+    assert p13.CAPACITY_DESIGN_ADVERSARIAL_SNAPSHOT_BYTES > p13.MAX_SNAPSHOT_BYTES
+    # Pico operativo estimado acotado (serializacion/carga/indice).
+    assert 1_000_000_000 < p13.CAPACITY_DESIGN_MEMORY_PEAK_BYTES < 4_000_000_000
+    assert "privados offline" in p13.SNAPSHOT_PURPOSE
+
+
+def test_limite_exacto_aceptado_y_limite_menos_uno_rechazado(
+    base_snapshot, provider_path, tmp_path, monkeypatch
+):
+    raw = p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+    exact = len(raw)
+    # Limite exacto: aceptado en serializacion y en carga.
+    monkeypatch.setattr(p13, "MAX_SNAPSHOT_BYTES", exact)
+    assert (
+        len(p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot))
+        == exact
+    )
+    loaded = p13.load_persisted_tactical_recommendation_snapshot(provider_path)
+    assert loaded.fingerprint == base_snapshot.fingerprint
+    # Limite - 1: rechazado en lstat (antes de abrir) y en serializacion;
+    # el error de cierre es de disponibilidad, no de parseo.
+    monkeypatch.setattr(p13, "MAX_SNAPSHOT_BYTES", exact - 1)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+    shrunken = _write_snapshot(tmp_path, "limite-menos-uno.json", raw)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.load_persisted_tactical_recommendation_snapshot(shrunken)
+
+
+def test_archivo_que_crece_entre_lstat_y_lectura_se_rechaza(
+    provider_path, monkeypatch
+):
+    raw = provider_path.read_bytes()
+    limit = len(raw) - 64
+    monkeypatch.setattr(p13, "MAX_SNAPSHOT_BYTES", limit)
+
+    class _ForgedLstatPath(p13.Path):
+        """Simula crecimiento: lstat reporta tamano menor al real."""
+
+        def lstat(self):
+            real = tuple(super().lstat())
+            # st_size esta en el indice 6 de os.stat_result.
+            return os.stat_result(real[:6] + (limit,) + real[7:])
+
+    monkeypatch.setattr(p13, "Path", _ForgedLstatPath)
+    # _snapshot_path solo acepta str o Path; se pasa str para que la
+    # reconstruccion final use la clase parcheada (lstat falsificado).
+    # lstat pasa (tamano reportado == limite), pero la lectura acotada
+    # (limite + 1) y la comprobacion final rechazan el tamano real.
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.load_persisted_tactical_recommendation_snapshot(str(provider_path))
+
+
+def _entry_canonical_bytes(entry) -> int:
+    return len(
+        json.dumps(
+            p13._entry_payload(entry),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+
+
+def test_capacidad_material_3610_entradas_con_margen_y_lookup_exacto(
+    tmp_path
+):
+    """Prueba unica de capacidad a escala material razonable (200 entradas).
+
+    Mide bytes/entrada sobre resultados sinteticos validos (available,
+    partial, absent). Comprueba: (a) el snapshot material completo
+    serializa dentro del limite; (b) la base de diseno representativa
+    (auditoria P16 del pipeline P10: 196,8 MB) cubre el limite con
+    margen >= 20 % y queda bajo umbral de 204,8 MiB; (c) canaria de
+    esquema: ninguna entrada supera el techo medido de entrada
+    saturada (26 candidatos, catalogo cerrado). El techo adversarial
+    del snapshot completo (3610 entradas saturadas, ~379,1 MiB)
+    supera deliberadamente el limite: 256 MiB es la defensa final
+    contra ficheros hostiles, y si un snapshot legitimo llegara a
+    superar el limite, la construccion P14 falla con razon cerrada.
+    Verifica ademas que el provider conserva el lookup exacto.
+    """
+    states = ("available", "partial", "absent")
+    results = []
+    for index in range(200):
+        player = f"CAPPlayer{index:03d}"
+        opponent = f"CAPRival{index:03d}"
+        results.append(
+            _prioritization(
+                states[index % 3],
+                index % 8,
+                AS_OF_DATE,
+                False,
+                player=player,
+                opponent=opponent,
+            )
+        )
+    snapshot = p13.build_persisted_tactical_recommendation_snapshot(results)
+    raw = p13.serialize_persisted_tactical_recommendation_snapshot(snapshot)
+    per_entry = [_entry_canonical_bytes(entry) for entry in snapshot.entries]
+    universe = p13.CAPACITY_DESIGN_UNIVERSE_ENTRIES
+    assert snapshot.entry_count == 200
+    # (a) Snapshot material completo dentro del limite.
+    assert len(raw) < p13.MAX_SNAPSHOT_BYTES
+    # (b) Base de diseno representativa: margen >= 20 % y umbral 204,8 MiB.
+    representative = p13.CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES
+    assert representative * 5 <= p13.MAX_SNAPSHOT_BYTES * 4
+    assert representative <= 204_800_000
+    # Coherencia de la proyeccion: tipica x universo ~= representativa.
+    estimated = p13.CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES * universe
+    delta = abs(estimated - representative)
+    assert delta * 100 <= representative
+    # (c) Canaria de esquema: la peor entrada medida no supera el techo
+    #     saturado documentado (falla si el esquema crece silenciosamente).
+    assert max(per_entry) <= p13.CAPACITY_DESIGN_MAX_ENTRY_BYTES
+    # Techo adversarial documentado (defensa, no objetivo de capacidad).
+    assert p13.CAPACITY_DESIGN_MAX_ENTRY_BYTES * universe > p13.MAX_SNAPSHOT_BYTES
+    # Provider: lookup exacto conservado sobre el snapshot medido.
+    provider = p13.PersistedTacticalRecommendationProvider(snapshot=snapshot)
+    hit = provider.fetch_tactical_prioritization(
+        _valid_query("CAPPlayer001", "CAPRival001", AS_OF_DATE)
+    )
+    assert (
+        hit
+        is snapshot.index[
+            p13.TacticalRecommendationSnapshotKey(
+                "CAPPlayer001", "CAPRival001", AS_OF_DATE
+            )
+        ].result
+    )
+    with pytest.raises(RecommendationNotFoundError):
+        provider.fetch_tactical_prioritization(
+            _valid_query("CAPAusente001", "CAPAusente002", AS_OF_DATE)
+        )

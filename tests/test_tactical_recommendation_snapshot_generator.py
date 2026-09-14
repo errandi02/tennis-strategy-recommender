@@ -1291,6 +1291,20 @@ def test_h2_ast_architecture_guard():
             assert node.func.id not in banned_names
 
 
+def test_h3_p14_resuelve_el_limite_p13_de_forma_dinamica(monkeypatch):
+    result = p14.generate_tactical_recommendation_snapshot(_four())
+    # Limite productivo (P16): 256 MiB; el snapshot sintetico pasa.
+    assert p13.MAX_SNAPSHOT_BYTES == 256 * 1024 * 1024
+    assert result.serialized_bytes < p13.MAX_SNAPSHOT_BYTES
+    # El limite se resuelve en tiempo de llamada: reducido a un byte
+    # menos que el serializado, la construccion falla con rationale
+    # cerrado y sin snapshot parcial.
+    monkeypatch.setattr(p13, "MAX_SNAPSHOT_BYTES", result.serialized_bytes - 1)
+    with pytest.raises(p14.TacticalRecommendationSnapshotGenerationError) as exc:
+        p14.generate_tactical_recommendation_snapshot(_four())
+    assert exc.value.reason_code == "p13_snapshot_build_failed"
+
+
 # --------------------------------------------------------------------------
 # I. Privacidad recursiva (sentinelas)
 # --------------------------------------------------------------------------

@@ -6,11 +6,15 @@ Prepara la integracion offline completa sin ejecutar datos reales:
         -> generador P14 -> snapshot privado P13 -> (futuro) provider P13
         -> servicio/API P12
 
-P16 habilita ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para exactamente
-un intento manual: la razon contractual es
-``single_manual_private_snapshot_generation_authorized_after_preflight``,
-``AUTOMATIC_RETRY`` es ``False`` y la politica es
-``single_manual_execution_without_automatic_retry``. Tras la ejecucion
+P16 habilito ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para un intento
+manual; la revision de capacidad P13 (``MAX_SNAPSHOT_BYTES``) bloquea
+de nuevo la ruta antes de ejecutar: la constante vuelve a ``False`` y
+el reason code de bloqueo es
+``real_snapshot_generation_blocked_pending_capacity_validation``.
+No queda ninguna ruta real ejecutable mientras se revisa y valida la
+capacidad del snapshot P13. La politica permanece
+``single_manual_execution_without_automatic_retry`` y
+``AUTOMATIC_RETRY`` en ``False``. Tras la ejecucion eventual
 (completada, fallida o interrumpida), un commit posterior debera fijar
 ``REAL_EXECUTION_AUTHORIZED = False``; el proceso no edita su propia
 constante. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
@@ -80,13 +84,18 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# Autorizacion unica y manual (habilitada por P16). No existe bypass
-# por entorno, flag CLI, reintento ni segunda constante. Cubre
-# exactamente un intento manual: si falla o se interrumpe, no se
-# repite sin nueva decision humana.
-REAL_EXECUTION_AUTHORIZED: Final = True
+# Autorizacion unica y manual. Cerrada temporalmente por la revision
+# de capacidad P13: la estimacion de snapshot (3.610 entradas)
+# superaba el limite historico MAX_SNAPSHOT_BYTES; la ruta real no es
+# ejecutable hasta que la capacidad sea validada y re-autorizada
+# manualmente. No existe bypass por entorno, flag CLI, reintento ni
+# segunda constante.
+REAL_EXECUTION_AUTHORIZED: Final = False
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
     "single_manual_private_snapshot_generation_authorized_after_preflight"
+)
+REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
+    "real_snapshot_generation_blocked_pending_capacity_validation"
 )
 AUTOMATIC_RETRY: Final = False
 SINGLE_MANUAL_EXECUTION_POLICY: Final = (
@@ -105,8 +114,8 @@ POST_EXECUTION_CLOSURE_RULE: Final = (
     "propia constante; cero reintento automatico."
 )
 REAL_SNAPSHOT_EXECUTION_BLOCK_REASON: Final = (
-    "Ejecucion real no autorizada: REAL_EXECUTION_AUTHORIZED=P15 debe "
-    "habilitarse manualmente antes de generar el snapshot privado."
+    "Ejecucion real bloqueada: capacidad P13 pendiente de validacion "
+    "(real_snapshot_generation_blocked_pending_capacity_validation)."
 )
 
 PIPELINE_STAGES: Final = (
@@ -142,7 +151,7 @@ PIPELINE_RECONCILIATION_KEYS: Final = (
 
 PIPELINE_REASON_CODES: Final = frozenset(
     {
-        "real_snapshot_generation_not_authorized",
+        "real_snapshot_generation_blocked_pending_capacity_validation",
         "path_contract_violation",
         "p10_pipeline_execution_failed",
         "p10_result_not_pipeline_result",
@@ -159,8 +168,8 @@ PIPELINE_REASON_CODES: Final = frozenset(
 
 _ERROR_MESSAGES: Final = MappingProxyType(
     {
-        "real_snapshot_generation_not_authorized": (
-            "P15 bloqueado: ejecucion real no autorizada."
+        "real_snapshot_generation_blocked_pending_capacity_validation": (
+            "P15 bloqueado: capacidad P13 pendiente de validacion."
         ),
         "path_contract_violation": (
             "Ruta privada fuera del contrato P15 (no se revela)."
@@ -871,7 +880,7 @@ def run_tactical_recommendation_snapshot_pipeline(
     artefactos P10. Cero reintentos y cero snapshot parcial.
     """
     if not REAL_EXECUTION_AUTHORIZED:
-        raise _fail("preflight", "real_snapshot_generation_not_authorized")
+        raise _fail("preflight", REAL_EXECUTION_BLOCK_REASON_CODE)
     if type(snapshot_path) is str or type(performance_log) is str:
         raise _fail("preflight", "path_contract_violation")
     if not isinstance(snapshot_path, PurePath) or not isinstance(
@@ -1158,6 +1167,7 @@ __all__ = (
     "PREVIOUS_REAL_P15_ATTEMPTS",
     "REAL_EXECUTION_AUTHORIZED",
     "REAL_EXECUTION_AUTHORIZATION_REASON",
+    "REAL_EXECUTION_BLOCK_REASON_CODE",
     "REAL_SNAPSHOT_EXECUTION_BLOCK_REASON",
     "SINGLE_MANUAL_EXECUTION_POLICY",
     "TacticalRecommendationSnapshotPipelineError",

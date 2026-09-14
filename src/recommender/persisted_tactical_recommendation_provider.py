@@ -112,8 +112,34 @@ SNAPSHOT_UPSTREAM_RESULT_CONTRACT: Final = "tactical_prioritization_result"
 SNAPSHOT_ENTRY_DOMAIN: Final = b"tennis-persisted-tactical-recommendation-entry\x00"
 SNAPSHOT_SNAPSHOT_DOMAIN: Final = b"tennis-persisted-tactical-recommendation-snapshot\x00"
 
-MAX_SNAPSHOT_BYTES: Final = 32 * 1024 * 1024
+# Limite exacto del snapshot (P16, 256 MiB). Proposito exclusivo:
+# snapshots privados offline de generacion unica manual, no hosting.
+# Dimensionamiento (auditoria P16, sintesis auditada, no garantia):
+# - universo objetivo p10_offline: 3.610 entradas (1.805 pares);
+# - entrada representativa medida (pipeline P10): ~54,5 KB
+#   (51,6 minimo / 66,7 max por pareja);
+# - snapshot representativo estimado: ~187,7 MiB
+#   (margen 36 % frente al limite; <= 204,8 MiB con +20 %);
+# - techo adversarial de una entrada (esquema 1.0.0 saturado:
+#   26 candidatos, catalogo cerrado, identificadores a 64 chars):
+#   102,352 B medidos;
+# - techo adversarial del snapshot (3.610 entradas saturadas):
+#   ~379,1 MiB > limite; el limite es deliberadamente inferior como
+#   defensa final contra ficheros hostiles. Si un snapshot
+#   legitimamente generado superara 256 MiB, la construccion P14
+#   falla con razon cerrada (p13_snapshot_build_failed) y se requiere
+#   una decision humana explicita de redimensionamiento.
+MAX_SNAPSHOT_BYTES: Final = 256 * 1024 * 1024
 MAX_ENTRIES: Final = 100_000
+CAPACITY_DESIGN_UNIVERSE_ENTRIES: Final = 3_610
+CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES: Final = 54_520
+CAPACITY_DESIGN_MAX_ENTRY_BYTES: Final = 110_000
+CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES: Final = 196_817_992
+CAPACITY_DESIGN_ADVERSARIAL_SNAPSHOT_BYTES: Final = 397_100_000
+CAPACITY_DESIGN_MEMORY_PEAK_BYTES: Final = 2_500_000_000
+SNAPSHOT_PURPOSE: Final = (
+    "exclusivo para snapshots privados offline de generacion unica manual"
+)
 MAX_JSON_DEPTH: Final = 64
 MAX_JSON_STRING_LENGTH: Final = 4096
 MAX_JSON_ARRAY_ITEMS: Final = 100_000
@@ -1379,6 +1405,12 @@ def create_persisted_tactical_recommendation_provider(
 
 
 __all__ = (
+    "CAPACITY_DESIGN_ADVERSARIAL_SNAPSHOT_BYTES",
+    "CAPACITY_DESIGN_MAX_ENTRY_BYTES",
+    "CAPACITY_DESIGN_MEMORY_PEAK_BYTES",
+    "CAPACITY_DESIGN_REPRESENTATIVE_SNAPSHOT_BYTES",
+    "CAPACITY_DESIGN_TYPICAL_ENTRY_BYTES",
+    "CAPACITY_DESIGN_UNIVERSE_ENTRIES",
     "MAX_ENTRIES",
     "MAX_JSON_ARRAY_ITEMS",
     "MAX_JSON_DEPTH",
@@ -1393,6 +1425,7 @@ __all__ = (
     "SNAPSHOT_CONTRACT_NAME",
     "SNAPSHOT_ENTRY_DOMAIN",
     "SNAPSHOT_FORMAT_VERSION",
+    "SNAPSHOT_PURPOSE",
     "SNAPSHOT_SCHEMA_VERSION",
     "SNAPSHOT_SNAPSHOT_DOMAIN",
     "SNAPSHOT_UPSTREAM_RESULT_CONTRACT",
