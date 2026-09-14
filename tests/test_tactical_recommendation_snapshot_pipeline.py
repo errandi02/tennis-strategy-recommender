@@ -146,7 +146,12 @@ def test_p15_bloqueado_por_revision_de_capacidad():
         "real_snapshot_generation_blocked_pending_capacity_validation"
     )
     assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
-        "single_manual_private_snapshot_generation_authorized_after_preflight"
+        "real_snapshot_generation_blocked_pending_capacity_validation"
+    )
+    assert (
+        not p15.REAL_EXECUTION_AUTHORIZED
+        and "authorized_after_preflight"
+        not in p15.REAL_EXECUTION_AUTHORIZATION_REASON
     )
     assert p15.AUTOMATIC_RETRY is False
     assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (

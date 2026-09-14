@@ -92,7 +92,7 @@ PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 # segunda constante.
 REAL_EXECUTION_AUTHORIZED: Final = False
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
-    "single_manual_private_snapshot_generation_authorized_after_preflight"
+    "real_snapshot_generation_blocked_pending_capacity_validation"
 )
 REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
     "real_snapshot_generation_blocked_pending_capacity_validation"
