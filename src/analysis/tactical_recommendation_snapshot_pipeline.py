@@ -8,12 +8,15 @@ Prepara la integracion offline completa sin ejecutar datos reales:
 
 ``REAL_EXECUTION_AUTHORIZED`` permanece en ``False``; esta capa nunca
 lee Parquet/CSV, nunca accede a ``data/``, nunca escribe en el
-repositorio y nunca genera el snapshot real. La ruta productiva reutiliza
-sin modificar: ``execute_authorized_real_pipeline`` P10 (autorizacion,
-validacion de paths, lector/publisher inyectables, performance log P10
-atomico), ``validate_tactical_pipeline_result``, la proyeccion de
-``TacticalTargetResult`` a ``P10OfflineSnapshotRecord`` y el
-generador/persistidor P14 delegado (``generate_and_persist_...``).
+repositorio y nunca genera el snapshot real. La autorizacion de la
+generacion del snapshot la posee exclusivamente P15. La ruta
+productiva reutiliza sin modificar: ``compute_tactical_pipeline_result``
+P10 (frontera compute-only: lectura contractual unica, sin
+publicacion, sin performance log, sin dependencia de las
+autorizaciones historicas P10), ``validate_tactical_pipeline_result``,
+la proyeccion de ``TacticalTargetResult`` a ``P10OfflineSnapshotRecord``
+y el generador/persistidor P14 delegado
+(``generate_and_persist_...``).
 
 Auditoria contractual (evidencia en el codigo P10):
 
@@ -24,23 +27,27 @@ Auditoria contractual (evidencia en el codigo P10):
   (target_match_id, player, opponent, as_of_date, fold, orientation);
   la proyeccion a ``P10OfflineSnapshotRecord`` es por copia de campos,
   sin inferencias ni mapeos.
-- ``execute_authorized_real_pipeline`` es el punto unico de ejecucion
-  real de P10: comprueba ``REAL_EXECUTION_AUTHORIZED`` (P10) antes de
-  cualquier IO, valida paths (fuente contractual, log fuera del
-  repositorio) y acepta reader/validator/publisher inyectables. P15
-  inyecta un publisher que no publica ningun artefacto P10.
+- ``compute_tactical_pipeline_result`` es la unica frontera P15 usa
+  contra P10: valida la fuente contractual, verifica la linea de
+  sangre upstream, lee la fuente una vez y devuelve el resultado
+  validado. No publica, no escribe logs y no depende de
+  ``REAL_EXECUTION_AUTHORIZED`` / ``FURTHER_REAL_EXECUTION_AUTHORIZED``;
+  la autorizacion y la persistencia pertenecen al consumidor (P15).
 - ``validate_tactical_pipeline_result`` con la configuracion real ya
   obliga la poblacion target congelada (1.805 partidas, 3.610
   orientaciones, pares reciprocos, folds 168/371/646/620); el modo
   ``p10_offline`` de P14 re-verifica todo a nivel de records sin
   dependencias cruzadas.
-- No se requiere modificar P10/P13/P14.
+- La frontera historica ``execute_authorized_real_pipeline`` conserva
+  su comportamiento exacto (autorizacion historica, publicacion,
+  performance log, fallos) y delega su calculo en la misma frontera
+  compute-only.
 
 El performance log P15 es externo, atomico (mkstemp + os.replace),
 compacto, sin PII, sin rutas, sin timestamps civiles, sin trazas y sin
-NaN/Infinity. El log de P10 (contrato propio) se deriva del log P15 en
-el mismo directorio externo validado. Cero reintentos: cada fallo
-cierra el log con status/reason cerrados y no publica snapshot.
+NaN/Infinity. No existe ningun log P10 derivado: la frontera
+compute-only no escribe logs. Cero reintentos: cada fallo cierra el
+log con status/reason cerrados y no publica snapshot.
 """
 
 from __future__ import annotations
@@ -150,9 +157,17 @@ _P10_FOLDS: Final = p10.VALIDATION_FOLDS
 _P10_ORIENTATIONS: Final = frozenset(
     {"player_1_vs_player_2", "player_2_vs_player_1"}
 )
-_RAW_PATH: Final = re.compile(r"^/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+$")
+_POSIX_PATH: Final = re.compile(
+    r"^/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+$"
+)
+_WINDOWS_DRIVE_PATH: Final = re.compile(
+    r"^[A-Za-z]:[\\/][A-Za-z0-9._-]+(?:[\\/][A-Za-z0-9._-]+)*$"
+)
+_WINDOWS_UNC_PATH: Final = re.compile(
+    r"^\\\\[A-Za-z0-9._-]+[\\/][A-Za-z0-9._-]+(?:[\\/][A-Za-z0-9._-]+)*$"
+)
 _SAFE_TOKEN: Final = re.compile(r"[A-Za-z0-9_.-]{1,64}")
-_P10_LOG_STEM: Final = ".p10-pipeline"
+_IS_WINDOWS: Final = os.name == "nt"
 _PROGRESS_STEP: Final = 400
 
 
@@ -177,48 +192,70 @@ def _fail(
     return TacticalRecommendationSnapshotPipelineError(stage, reason_code)
 
 
-def _derived_p10_log_path(performance_log: Path) -> Path:
-    return performance_log.with_name(
-        performance_log.stem + _P10_LOG_STEM + performance_log.suffix
-    )
-
-
-def _is_private_posix_path(raw: object) -> bool:
+def _is_posix_private_path(raw: object) -> bool:
+    """Validacion textual POSIX cerrada (sin materializar)."""
     if type(raw) is not str or not 0 < len(raw) <= 4096:
-        return False
-    if "\x00" in raw or "~" in raw or "\\" in raw or ":" in raw:
         return False
     if not all(0x20 <= ord(character) < 0x7F for character in raw):
         return False
-    if _RAW_PATH.fullmatch(raw) is None:
+    if _POSIX_PATH.fullmatch(raw) is None:
         return False
     return all(part not in (".", "..") for part in raw.split("/"))
 
 
+def _is_windows_private_path(raw: object) -> bool:
+    """Validacion textual Windows cerrada (sin materializar).
+
+    Admite absoluto con unidad (``C:\\...`` o ``C:/...``) y UNC
+    (``\\\\servidor\\compartida\\...``); rechaza relativas,
+    drive-relative, URI, NUL, tilde, traversal y componentes fuera
+    del conjunto textual cerrado.
+    """
+    if type(raw) is not str or not 0 < len(raw) <= 4096:
+        return False
+    if not all(0x20 <= ord(character) < 0x7F for character in raw):
+        return False
+    if _WINDOWS_DRIVE_PATH.fullmatch(raw) is None:
+        if _WINDOWS_UNC_PATH.fullmatch(raw) is None:
+            return False
+    normalized = raw.replace("/", "\\")
+    return all(part not in (".", "..") for part in normalized.split("\\"))
+
+
+def _is_native_private_path(raw: object) -> bool:
+    """Validacion textual de la plataforma nativa actual."""
+    if _IS_WINDOWS:
+        return _is_windows_private_path(raw)
+    return _is_posix_private_path(raw)
+
+
 def _has_linked_ancestor(path: Path) -> bool:
     for ancestor in path.parents:
-        if ancestor.is_symlink():
+        if ancestor.is_symlink() or ancestor.is_junction():
             return True
     return False
 
 
 def _parse_private_paths(
     snapshot_raw: object, log_raw: object
-) -> tuple[Path, Path, Path]:
-    """Valida las dos rutas privadas y devuelve (snapshot, log, log P10).
+) -> tuple[Path, Path]:
+    """Valida las dos rutas privadas (snapshot, log) nativamente.
 
-    Cerrado contra: rutas no POSIX absolutas, URI, trayectoria, NUL,
-    tilde, backslash, componentes vacios, symlink en cadena, padre
-    inexistente, destino existente/directorio, duplicidad de rutas y
-    destino dentro del repositorio. Los errores no revelan la ruta.
+    Separacion cerrada en dos pasos: primero la validacion textual
+    multiplataforma (absoluta, sin NUL, sin tilde, sin URI, sin
+    traversal, conjunto de caracteres cerrado); despues la
+    validacion material solo contra el sistema nativo actual (padre
+    existente, sin symlink/junction en la cadena, fuera del
+    repositorio, destino inexistente, sin duplicidad). Nunca se
+    materializa una ruta de la otra plataforma. Los errores no
+    revelan la ruta.
     """
     for raw in (snapshot_raw, log_raw):
-        if not _is_private_posix_path(raw):
+        if not _is_native_private_path(raw):
             raise _fail("preflight", "path_contract_violation")
     snapshot_path = Path(str(snapshot_raw))
     log_path = Path(str(log_raw))
-    derived_log_path = _derived_p10_log_path(log_path)
-    for candidate in (snapshot_path, log_path, derived_log_path):
+    for candidate in (snapshot_path, log_path):
         if not candidate.parent.is_dir() or os.path.lexists(candidate):
             raise _fail("preflight", "path_contract_violation")
         if _has_linked_ancestor(candidate):
@@ -231,7 +268,7 @@ def _parse_private_paths(
             raise _fail("preflight", "path_contract_violation")
     if os.path.normpath(str(snapshot_raw)) == os.path.normpath(str(log_raw)):
         raise _fail("preflight", "path_contract_violation")
-    return snapshot_path, log_path, derived_log_path
+    return snapshot_path, log_path
 
 
 def _performance_log_bytes(payload: object) -> bytes:
@@ -764,19 +801,18 @@ def _check_p10_seal_metadata(
             raise _fail("p10_pipeline", "p10_seal_violation")
 
 
-def _production_p10_runner(performance_log: Path) -> Callable[[], object]:
-    """Llamada unica a la frontera real P10 con publisher sin publicacion."""
-    p10_log = _derived_p10_log_path(performance_log)
+def _production_p10_runner() -> Callable[[], object]:
+    """Llamada unica a la frontera compute-only P10.
 
-    def _no_artifact_publisher(_result: object, _paths: object) -> None:
-        return None
+    ``compute_tactical_pipeline_result`` lee la fuente contractual
+    una vez y devuelve el ``TacticalPipelineResult``; no publica
+    artefactos P10, no escribe performance log P10 y no depende de
+    las autorizaciones historicas P10. La unica autorizacion de la
+    ruta productiva es ``P15.REAL_EXECUTION_AUTHORIZED``.
+    """
 
     def _runner() -> object:
-        return p10.execute_authorized_real_pipeline(
-            p10.POINTS_PATH,
-            p10_log,
-            publisher=_no_artifact_publisher,
-        )
+        return p10.compute_tactical_pipeline_result(p10.POINTS_PATH)
 
     return _runner
 
@@ -814,7 +850,7 @@ def run_tactical_recommendation_snapshot_pipeline(
         performance_log, PurePath
     ):
         raise _fail("preflight", "path_contract_violation")
-    snapshot_path, performance_log, _derived_log = _parse_private_paths(
+    snapshot_path, performance_log = _parse_private_paths(
         str(snapshot_path), str(performance_log)
     )
     selected_clock = clock if clock is not None else perf_counter
@@ -825,7 +861,7 @@ def run_tactical_recommendation_snapshot_pipeline(
     )
     selected_p10_runner = (
         p10_runner if p10_runner is not None
-        else _production_p10_runner(performance_log)
+        else _production_p10_runner()
     )
     selected_generator = (
         snapshot_generator
@@ -1038,7 +1074,7 @@ def run_tactical_recommendation_snapshot_pipeline(
 
 def validate_snapshot_pipeline_paths_cli(
     snapshot_raw: object, log_raw: object
-) -> tuple[Path, Path, Path]:
+) -> tuple[Path, Path]:
     """Validacion contractual de las rutas privadas (sin PII en errores)."""
     return _parse_private_paths(snapshot_raw, log_raw)
 
@@ -1055,7 +1091,7 @@ def main(argv: tuple[str, ...] | None = None) -> None:
     if not REAL_EXECUTION_AUTHORIZED:
         raise SystemExit(REAL_SNAPSHOT_EXECUTION_BLOCK_REASON)
     try:
-        snapshot_path, performance_log, _derived = _parse_private_paths(
+        snapshot_path, performance_log = _parse_private_paths(
             arguments.snapshot_path, arguments.performance_log
         )
     except TacticalRecommendationSnapshotPipelineError:

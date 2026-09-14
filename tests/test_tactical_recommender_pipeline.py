@@ -855,7 +855,153 @@ def test_authorization_is_one_explicit_constant_and_execution_has_no_retry_loop(
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     ]
     assert called_names.count("source_reader") == 0
-    assert called_names.count("selected_source_reader") == 1
+    assert called_names.count("compute_tactical_pipeline_result") == 1
+
+
+def test_compute_only_boundary_returns_valid_result_while_p10_stays_blocked(
+    monkeypatch
+):
+    """Frontera compute-only: funciona con la P10 historica bloqueada."""
+    assert pipeline.REAL_EXECUTION_AUTHORIZED is False
+    assert pipeline.FURTHER_REAL_EXECUTION_AUTHORIZED is False
+    calls = {"read": 0, "upstream": 0, "publish": 0, "log": 0}
+
+    def reader(path):
+        calls["read"] += 1
+        assert path == pipeline.POINTS_PATH
+        return _points()
+
+    def spy_publisher(*_args, **_kwargs):
+        calls["publish"] += 1
+
+    def forbidden_log(_path):
+        calls["log"] += 1
+        raise AssertionError("La frontera compute-only no escribe logs.")
+
+    monkeypatch.setattr(
+        pipeline, "publish_tactical_pipeline_artifacts", spy_publisher
+    )
+    monkeypatch.setattr(pipeline, "_IncrementalPerformanceLog", forbidden_log)
+
+    result = pipeline.compute_tactical_pipeline_result(
+        pipeline.POINTS_PATH,
+        source_reader=reader,
+        upstream_validator=lambda: calls.__setitem__("upstream", 1),
+        config=_config(),
+    )
+    assert type(result) is pipeline.TacticalPipelineResult
+    pipeline.validate_tactical_pipeline_result(result)
+    assert calls["read"] == 1
+    assert calls["upstream"] == 1
+    assert calls["publish"] == 0
+    assert calls["log"] == 0
+    # Sellado intacto: el test no se abre.
+    assert result.test_seal.test_status == "sealed"
+    assert result.test_seal.used_for_method_selection is False
+    assert result.test_seal.counters == tuple(
+        (field, 0) for field in TEST_ZERO_FIELDS
+    )
+    assert all(value == 0 for value in vars(result.leakage_audit).values())
+    # Las constantes historicas permanecen falsas e intactas.
+    assert pipeline.REAL_EXECUTION_AUTHORIZED is False
+    assert pipeline.FURTHER_REAL_EXECUTION_AUTHORIZED is False
+
+
+def test_compute_only_boundary_has_no_publication_no_logs_no_cli():
+    source = inspect.getsource(pipeline.compute_tactical_pipeline_result)
+    tree = ast.parse(source)
+    function = tree.body[0]
+    referenced = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Name):
+            referenced.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            referenced.add(node.attr)
+    assert "REAL_EXECUTION_AUTHORIZED" not in referenced
+    assert "FURTHER_REAL_EXECUTION_AUTHORIZED" not in referenced
+    assert "publish_tactical_pipeline_artifacts" not in referenced
+    parameters = set(inspect.signature(pipeline.compute_tactical_pipeline_result).parameters)
+    assert parameters == {
+        "source_path",
+        "source_reader",
+        "upstream_validator",
+        "config",
+        "stage_timing_sink",
+        "operation_counters",
+        "progress_callback",
+        "read_points_out",
+    }
+    for forbidden in ("publisher", "artifact_paths", "performance_log", "argv"):
+        assert forbidden not in parameters
+
+
+def test_compute_only_boundary_rejects_non_contract_source_before_read():
+    calls = []
+    wrong_source = (
+        Path("Z:\\otro\\origen.parquet")
+        if os.name == "nt"
+        else Path("/otro/origen.parquet")
+    )
+    with pytest.raises(TacticalPipelineContractError, match="source_no_autorizada"):
+        pipeline.compute_tactical_pipeline_result(
+            wrong_source,
+            source_reader=lambda _path: calls.append("read"),
+        )
+    assert calls == []
+
+
+def test_compute_only_boundary_exposes_read_frame_once_for_reconstruction():
+    points = _points()
+    read_points: list = []
+    result = pipeline.compute_tactical_pipeline_result(
+        pipeline.POINTS_PATH,
+        source_reader=lambda _path: points,
+        upstream_validator=lambda: None,
+        config=_config(),
+        read_points_out=read_points,
+    )
+    assert type(result) is pipeline.TacticalPipelineResult
+    assert read_points == [points]
+    with pytest.raises(TacticalPipelineContractError, match="read_points_out"):
+        pipeline.compute_tactical_pipeline_result(
+            pipeline.POINTS_PATH,
+            source_reader=lambda _path: points,
+            upstream_validator=lambda: None,
+            config=_config(),
+            read_points_out=[points],
+        )
+
+
+def test_compute_only_boundary_runs_upstream_validator_exactly_once():
+    calls = []
+
+    def counting_upstream():
+        calls.append("upstream")
+
+    pipeline.compute_tactical_pipeline_result(
+        pipeline.POINTS_PATH,
+        source_reader=lambda _path: _points(),
+        upstream_validator=counting_upstream,
+        config=_config(),
+    )
+    assert calls == ["upstream"]
+    with pytest.raises(TacticalPipelineContractError):
+        pipeline.compute_tactical_pipeline_result(
+            pipeline.POINTS_PATH,
+            source_reader=lambda _path: _points(),
+            upstream_validator=lambda: (_ for _ in ()).throw(
+                TacticalPipelineContractError("linaje_roto")
+            ),
+            config=_config(),
+        )
+
+
+def test_historic_entry_point_still_governed_by_historic_authorization():
+    source = inspect.getsource(pipeline.execute_authorized_real_pipeline)
+    assert "if not REAL_EXECUTION_AUTHORIZED" in source
+    assert "REAL_EXECUTION_BLOCK_REASON" in source
+    assert "FURTHER_REAL_EXECUTION_AUTHORIZED" not in source
+    assert "compute_tactical_pipeline_result" in source
 
 
 def test_real_configuration_rejects_the_reference_evidence_route():

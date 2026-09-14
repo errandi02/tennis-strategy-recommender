@@ -236,15 +236,30 @@ def test_ast_autorizacion_unica_constante_falsa_sin_ambiente():
 # --------------------------------------------------------------------- #
 
 
-def test_rutas_validas_externas_devuelven_derivado(external_dir):
+def test_rutas_validas_externas_devuelven_pare(external_dir):
     snapshot_raw, log_raw = _raw_paths(external_dir)
-    snapshot, log, derived = p15.validate_snapshot_pipeline_paths_cli(
+    snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
         snapshot_raw, log_raw
     )
     assert snapshot == Path(snapshot_raw)
     assert log == Path(log_raw)
-    assert derived == log.with_name(log.stem + ".p10-pipeline" + log.suffix)
-    assert not derived.exists()
+
+
+def test_no_existe_log_p10_derivado_en_el_contrato_p15(external_dir):
+    # El log derivado P10 dejio de existir: un fichero con el antiguo
+    # prenombre en el directorio externo no bloquea la validacion.
+    (external_dir / "private-performance.p10-pipeline.json").write_text(
+        "x", encoding="utf-8"
+    )
+    snapshot_raw, log_raw = _raw_paths(external_dir)
+    snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
+        snapshot_raw, log_raw
+    )
+    assert snapshot.name == "private-snapshot.json"
+    assert log.name == "private-performance.json"
+    module_source = Path(p15.__file__).read_text(encoding="utf-8")
+    assert "_derived_p10_log_path" not in module_source
+    assert ".p10-pipeline" not in module_source
 
 
 @pytest.mark.parametrize(
@@ -369,15 +384,80 @@ def test_enlace_simbolico_en_ancestros_se_rechaza(external_dir):
         )
 
 
-def test_log_p10_derivado_existente_se_rechaza(external_dir):
-    (external_dir / "private-performance.p10-pipeline.json").write_text(
-        "x", encoding="utf-8"
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            "C:\\Users\\omar.errandi\\privado\\snapshot.json", id="unidad"
+        ),
+        pytest.param(
+            "C:/Users/omar.errandi/privado/snapshot.json", id="unidad-barra"
+        ),
+        pytest.param(
+            "c:\\tmp\\snapshot.json", id="unidad-minuscula"
+        ),
+        pytest.param(
+            "\\\\srv01\\share\\compartida\\snapshot.json", id="unc"
+        ),
+    ],
+)
+def test_ruta_windows_textual_valida(raw):
+    assert p15._is_windows_private_path(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            "C:\\Users\\..\\privado\\snapshot.json", id="traversal"
+        ),
+        pytest.param(
+            "C:\\Users\\.\\privado\\snapshot.json", id="punto"
+        ),
+        pytest.param(
+            "relativo\\privado\\snapshot.json", id="relative"
+        ),
+        pytest.param("C:relative.json", id="drive-relative"),
+        pytest.param("file:///C:/privado/snapshot.json", id="uri"),
+        pytest.param("https://host/privado.json", id="https"),
+        pytest.param("C:\\", id="raiz-sin-componente"),
+        pytest.param("C:\\a b.json", id="espacio"),
+        pytest.param("C:\\caf\xe9.json", id="no-ascii"),
+        pytest.param("C:\\a\x00b.json", id="nulo"),
+        pytest.param("~\\usuario\\snapshot.json", id="tilde"),
+        pytest.param("", id="vacia"),
+        pytest.param("C:\\" + "a" * 4096 + ".json", id="demasiado-larga"),
+        pytest.param(12, id="no-string"),
+    ],
+)
+def test_ruta_windows_textual_rechaza(raw):
+    assert not p15._is_windows_private_path(raw)
+
+
+def test_validador_posix_mantiene_el_contrato_original():
+    assert p15._is_posix_private_path("/tmp/privado/snapshot.json")
+    assert not p15._is_posix_private_path(
+        "C:\\Users\\omar.errandi\\privado\\snapshot.json"
     )
-    with pytest.raises(p15.TacticalRecommendationSnapshotPipelineError):
-        p15.validate_snapshot_pipeline_paths_cli(
-            str(external_dir / "private-snapshot.json"),
-            str(external_dir / "private-performance.json"),
-        )
+    assert not p15._is_posix_private_path("/tmp/../privado.json")
+    assert not p15._is_posix_private_path("file:///tmp/x.json")
+
+
+def test_validacion_nativa_usa_semantica_del_sistema_actual(external_dir):
+    import os
+
+    snapshot_raw, log_raw = _raw_paths(external_dir)
+    snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
+        snapshot_raw, log_raw
+    )
+    assert snapshot == Path(snapshot_raw)
+    assert log == Path(log_raw)
+    if os.name == "nt":
+        assert p15._is_native_private_path("C:\\tmp\\x.json")
+        assert not p15._is_native_private_path("/tmp/x.json")
+    else:
+        assert p15._is_native_private_path("/tmp/x.json")
+        assert not p15._is_native_private_path("C:\\tmp\\x.json")
 
 
 @pytest.mark.parametrize("bad_value", [None, 12, b"/tmp/a.json", object()])
@@ -475,6 +555,48 @@ def test_llamadas_exactas_y_identidad_de_records(
         assert record.fold == item.target.fold
         assert record.orientation == item.target.orientation
         assert record.prioritization is item.prioritization
+
+
+def test_solo_la_autorizacion_p15_gobierna_la_ruta_productiva(
+    authorized, external_dir, p10_mini_result, monkeypatch
+):
+    compute_calls: list[tuple[tuple, dict]] = []
+    publisher_calls: list = []
+
+    def compute_spy(*args, **kwargs):
+        compute_calls.append((args, kwargs))
+        return p10_mini_result
+
+    monkeypatch.setattr(
+        p10, "compute_tactical_pipeline_result", compute_spy
+    )
+    monkeypatch.setattr(
+        p10,
+        "publish_tactical_pipeline_artifacts",
+        lambda *_a, **_k: publisher_calls.append(1),
+    )
+    base = external_dir / "prod"
+    base.mkdir()
+    result = p15.run_tactical_recommendation_snapshot_pipeline(
+        base / "private-snapshot.json",
+        base / "private-performance.json",
+    )
+    assert result.execution_status == "completed"
+    # Una llamada a la frontera compute-only P10, con la fuente
+    # contractual y sin dependencias adicionales.
+    assert len(compute_calls) == 1
+    assert compute_calls[0] == ((p10.POINTS_PATH,), {})
+    # Cero publisher P10, cero log P10 derivado, cero artefactos P10.
+    assert publisher_calls == []
+    files = [name for name in base.iterdir()]
+    assert not any("p10-pipeline" in name.name for name in files)
+    assert {name.name for name in files} == {
+        "private-snapshot.json",
+        "private-performance.json",
+    }
+    # Las constantes historicas P10 permanecen falsas e intactas.
+    assert p10.REAL_EXECUTION_AUTHORIZED is False
+    assert p10.FURTHER_REAL_EXECUTION_AUTHORIZED is False
 
 
 def test_resultado_no_lleva_rutas_de_privacidad(
@@ -1411,7 +1533,7 @@ def test_ast_imports_cerrados_y_sin_io_en_entrada():
         and isinstance(node.value, ast.Name)
         and node.value.id == "os"
     }
-    assert os_attributes <= {"path", "replace", "close"}
+    assert os_attributes <= {"path", "replace", "close", "name"}
 
 
 def test_ast_sin_asserts_sin_pii_y_con_una_sola_banda():
@@ -1436,14 +1558,24 @@ def test_ast_sin_asserts_sin_pii_y_con_una_sola_banda():
         ".parquet",
     ):
         assert forbidden not in _MODULE_SOURCE
-    real_pipeline_calls = [
+    compute_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "compute_tactical_pipeline_result"
+    ]
+    historic_calls = [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "execute_authorized_real_pipeline"
     ]
-    assert len(real_pipeline_calls) == 1
+    # Una unica banda productiva: la frontera compute-only P10; la
+    # frontera historica (con publica y logs) no se llama desde P15.
+    assert len(compute_calls) == 1
+    assert len(historic_calls) == 0
 
 
 def test_ast_sin_estado_mutable_modulo():
@@ -1453,6 +1585,7 @@ def test_ast_sin_estado_mutable_modulo():
         ast.Tuple,
         ast.Name,
         ast.Attribute,
+        ast.Compare,
     )
 
     def _is_immutable(value) -> bool:

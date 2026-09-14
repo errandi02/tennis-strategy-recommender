@@ -4806,6 +4806,53 @@ class _IncrementalPerformanceLog:
         self._write(payload)
 
 
+def compute_tactical_pipeline_result(
+    source_path: Path,
+    *,
+    source_reader: Callable[[Path], pd.DataFrame] | None = None,
+    upstream_validator: Callable[[], None] = validate_upstream_ancestry,
+    config: TacticalPipelineConfig | None = None,
+    stage_timing_sink: dict[str, float] | None = None,
+    operation_counters: dict[str, int] | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    read_points_out: list[pd.DataFrame] | None = None,
+) -> TacticalPipelineResult:
+    """Frontera compute-only del pipeline tactico real.
+
+    Valida la ruta contractual, verifica la linea de sangre upstream,
+    lee la fuente exactamente una vez y devuelve el
+    ``TacticalPipelineResult`` construido y validado por el pipeline
+    P10 existente. Solo calcula: no publica artefactos, no escribe
+    performance logs y no depende ni modifica las autorizaciones
+    historicas P10 (``REAL_EXECUTION_AUTHORIZED`` /
+    ``FURTHER_REAL_EXECUTION_AUTHORIZED``). La autorizacion y la
+    persistencia corresponden al consumidor. Sin reintento; no
+    ejecuta al importar. ``read_points_out`` (opcional, list vacio)
+    expone el frame leido al llamador para reconstruccion en sus
+    rutas de fallo; no altera la ejecucion.
+    """
+    _validate_cli_paths(source_path, None)
+    if read_points_out is not None:
+        if type(read_points_out) is not list or read_points_out:
+            raise TacticalPipelineContractError(
+                "read_points_out debe ser list exacto inicialmente vacio."
+            )
+    selected_reader = _read_source_points_once if source_reader is None else source_reader
+    selected_config = future_real_pipeline_config() if config is None else config
+    upstream_validator()
+    points = selected_reader(source_path)
+    if read_points_out is not None:
+        read_points_out.append(points)
+    return run_tactical_recommender_pipeline(
+        points,
+        None,
+        selected_config,
+        stage_timing_sink=stage_timing_sink,
+        operation_counters=operation_counters,
+        progress_callback=progress_callback,
+    )
+
+
 def execute_authorized_real_pipeline(
     source_path: Path,
     performance_log: Path,
@@ -4829,6 +4876,7 @@ def execute_authorized_real_pipeline(
     selected_source_reader = _read_source_points_once if source_reader is None else source_reader
     stage_timings: dict[str, float] = {}
     operation_counters: dict[str, int] = {}
+    read_points: list[pd.DataFrame] = []
     try:
         upstream_validator()
         _notify_pipeline_progress(
@@ -4843,14 +4891,15 @@ def execute_authorized_real_pipeline(
             observations_indexed=0,
             operation_counters=operation_counters,
         )
-        points = selected_source_reader(source_path)
-        result = run_tactical_recommender_pipeline(
-            points,
-            None,
-            future_real_pipeline_config(),
+        result = compute_tactical_pipeline_result(
+            source_path,
+            source_reader=selected_source_reader,
+            upstream_validator=lambda: None,
+            config=future_real_pipeline_config(),
             stage_timing_sink=stage_timings,
             operation_counters=operation_counters,
             progress_callback=progress,
+            read_points_out=read_points,
         )
     except KeyboardInterrupt:
         progress.interrupt()
@@ -4859,7 +4908,7 @@ def execute_authorized_real_pipeline(
         # Solo puede publicarse un cierre not_available si el sellado se puede
         # reconstruir sin ejecutar parser, features, perfiles o scoring.
         validated = validate_source_points(
-            points,
+            read_points[0],
             expected_rows=EXPECTED_SOURCE_ROWS,
         )
         _, _, seal = seal_development_points(validated)
@@ -5023,6 +5072,7 @@ __all__ = (
     "build_not_available_publication",
     "build_tactical_historical_observations",
     "build_validation_targets",
+    "compute_tactical_pipeline_result",
     "construct_tactical_attempt_records",
     "default_artifact_paths",
     "default_pipeline_config",
