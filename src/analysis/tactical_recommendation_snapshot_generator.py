@@ -19,14 +19,15 @@ Auditoria contractual (evidencia en el codigo P10):
   artefactos son agregados sin identidades (``_safe_summary`` y
   estructuras por patron/fold/disponibilidad).
 - La integracion real futura no exige modificar P10: basta un hook/sink
-  explicito en una ejecucion offline autorizada que proyecte
-  ``(t.prioritization for t in pipeline_result.target_results)`` a este
-  generador. El snapshot real NO puede reconstruirse desde los cinco
+  explicito en una ejecucion offline autorizada que proyecte cada
+  ``TacticalTargetResult`` a ``P10OfflineSnapshotRecord``. El snapshot
+  real NO puede reconstruirse desde los cinco
   artefactos persistidos (solo agregados); P14 nunca reconstruye ni
   re-extrae: consume resultados preconstruidos.
-- Limitacion documentada: un ``TacticalPrioritizationResult`` no porta
-  ``target_match_id``; la reconciliacion P10 verifica pares reciprocos
-  y distribucion por fold, pero no la identidad por partido.
+- Un ``TacticalPrioritizationResult`` no porta ``target_match_id``. Por
+  ello el modo ``p10_offline`` exige el record anterior y reconcilia por
+  identidad de partido; el modo ``generic`` acepta resultados desnudos
+  y no afirma reconciliacion del universo P10.
 
 Semantica de fallos (opcion A): el generador lanza errores contractuales
 cerrados (stage + reason code) sin devolver snapshot parcial. El unico
@@ -73,6 +74,12 @@ GENERATION_FINGERPRINT_DOMAIN: Final = (
 
 SEALED_TEST_FIRST_DAY: Final = date(2024, 1, 1)
 _CIVIL_ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
+_P10_FOLDS: Final = frozenset(
+    {"validation_2020", "validation_2021", "validation_2022", "validation_2023"}
+)
+_P10_ORIENTATIONS: Final = frozenset(
+    {"player_1_vs_player_2", "player_2_vs_player_1"}
+)
 
 SNAPSHOT_GENERATION_MODE_GENERIC: Final = "generic"
 SNAPSHOT_GENERATION_MODE_P10_OFFLINE: Final = "p10_offline"
@@ -112,6 +119,7 @@ GENERATION_REASON_CODES: Final = frozenset(
     {
         _STATE_REASON_EMPTY_INPUT,
         "element_not_tactical_prioritization_result",
+        "element_not_p10_offline_snapshot_record",
         "upstream_result_invalid",
         "scoring_policy_mismatch",
         "matchup_query_policy_mismatch",
@@ -136,6 +144,9 @@ _ERROR_MESSAGES: Final = MappingProxyType(
     {
         "element_not_tactical_prioritization_result": (
             "Input fuera de contrato: elemento no es TacticalPrioritizationResult exacto."
+        ),
+        "element_not_p10_offline_snapshot_record": (
+            "Input fuera de contrato: elemento no es P10OfflineSnapshotRecord exacto."
         ),
         "upstream_result_invalid": (
             "Input fuera de contrato: resultado upstream invalido."
@@ -238,15 +249,53 @@ def _civil_as_of_date(value: object) -> date:
             _GENERATION_STAGE_TEMPORAL,
             "as_of_date_not_civil",
         )
+    parsed: date | None = None
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
+        pass
+    if parsed is None:
         raise _fail(
             SnapshotGenerationTemporalError,
             _GENERATION_STAGE_TEMPORAL,
             "as_of_date_not_civil",
-        ) from None
+        )
     return parsed
+
+
+@dataclass(frozen=True)
+class P10OfflineSnapshotRecord:
+    """Proyeccion minima, privada y sin dependencia de importacion de P10."""
+
+    target_match_id: str
+    fold: str
+    orientation: str
+    prioritization: TacticalPrioritizationResult
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.target_match_id) is not str
+            or not self.target_match_id
+            or self.target_match_id != self.target_match_id.strip()
+            or len(self.target_match_id) > 512
+            or any(ord(character) < 0x20 for character in self.target_match_id)
+            or type(self.fold) is not str
+            or self.fold not in _P10_FOLDS
+            or type(self.orientation) is not str
+            or self.orientation not in _P10_ORIENTATIONS
+            or type(self.prioritization) is not TacticalPrioritizationResult
+        ):
+            raise TypeError("Record P10 offline fuera del contrato exacto.")
+        invalid = False
+        try:
+            validate_tactical_prioritization_result(self.prioritization)
+        except Exception:
+            invalid = True
+        if invalid:
+            raise TypeError("Record P10 offline fuera del contrato exacto.")
+        as_of = _civil_as_of_date(self.prioritization.matchup_query.as_of_date)
+        if as_of >= SEALED_TEST_FIRST_DAY or self.fold != f"validation_{as_of.year}":
+            raise TypeError("Record P10 offline fuera del contrato temporal.")
 
 
 @dataclass(frozen=True)
@@ -274,7 +323,7 @@ class SnapshotGenerationPolicy:
 def validate_snapshot_generation_policy(policy: object) -> None:
     if type(policy) is not SnapshotGenerationPolicy:
         raise TypeError("La politica debe ser SnapshotGenerationPolicy exacta.")
-    if policy.mode not in _SNAPSHOT_GENERATION_MODES:
+    if type(policy.mode) is not str or policy.mode not in _SNAPSHOT_GENERATION_MODES:
         raise ValueError("El modo de generacion esta fuera del contrato cerrado.")
     if type(policy.scoring_policy) is not TacticalScoringPolicy:
         raise ValueError("La scoring policy de referencia no es del contrato P10.")
@@ -310,7 +359,7 @@ def validate_snapshot_generation_policy(policy: object) -> None:
         or policy.expected_top_k < 1
     ):
         raise ValueError("Expectativas de la politica fuera del contrato exacto.")
-    is_p10 = policy.mode is SNAPSHOT_GENERATION_MODE_P10_OFFLINE
+    is_p10 = policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE
     if not is_p10 and (
         policy.required_entries is not None
         or policy.required_reciprocal_pairs is not None
@@ -536,31 +585,45 @@ def _check_policy_compatibility(
 
 
 def _reconcile_p10_universe(
-    keys: tuple, policy: SnapshotGenerationPolicy
+    records: tuple[P10OfflineSnapshotRecord, ...], policy: SnapshotGenerationPolicy
 ) -> tuple[tuple[int, int], ...]:
-    key_set = set(keys)
-    for player, opponent, as_of_date in keys:
-        if (opponent, player, as_of_date) not in key_set:
+    by_match: dict[str, list[P10OfflineSnapshotRecord]] = {}
+    for record in records:
+        by_match.setdefault(record.target_match_id, []).append(record)
+    for rows in by_match.values():
+        if len(rows) != 2:
             raise _fail(
                 SnapshotGenerationUniverseError,
                 _GENERATION_STAGE_UNIVERSE,
                 "universe_reciprocal_orientation_missing",
             )
-    pair_count = 0
-    for player, opponent, _as_of in keys:
-        if player < opponent:
-            pair_count += 1
-    if pair_count != policy.required_reciprocal_pairs:
+        first, second = rows
+        first_query = first.prioritization.matchup_query
+        second_query = second.prioritization.matchup_query
+        if (
+            {first.orientation, second.orientation} != _P10_ORIENTATIONS
+            or first.fold != second.fold
+            or first_query.as_of_date != second_query.as_of_date
+            or first_query.player != second_query.opponent
+            or first_query.opponent != second_query.player
+        ):
+            raise _fail(
+                SnapshotGenerationUniverseError,
+                _GENERATION_STAGE_UNIVERSE,
+                "universe_reciprocal_orientation_missing",
+            )
+    if len(by_match) != policy.required_reciprocal_pairs:
         raise _fail(
             SnapshotGenerationUniverseError,
             _GENERATION_STAGE_UNIVERSE,
             "universe_reciprocal_pair_count_mismatch",
         )
-    year_counts: dict[int, int] = {}
-    for _player, _opponent, as_of_date in keys:
-        year_counts[as_of_date.year] = year_counts.get(as_of_date.year, 0) + 1
+    fold_counts: dict[int, int] = {}
+    for record in records:
+        year = int(record.fold.removeprefix("validation_"))
+        fold_counts[year] = fold_counts.get(year, 0) + 1
     expected = tuple(sorted(policy.expected_fold_orientations))
-    if tuple(sorted(year_counts.items())) != expected:
+    if tuple(sorted(fold_counts.items())) != expected:
         raise _fail(
             SnapshotGenerationUniverseError,
             _GENERATION_STAGE_UNIVERSE,
@@ -593,63 +656,108 @@ def generate_tactical_recommendation_snapshot(
 
     limit = p13.MAX_ENTRIES
     materialized: list[TacticalPrioritizationResult] = []
+    p10_records: list[P10OfflineSnapshotRecord] = []
     seen: dict[tuple[str, str, date], str] = {}
     available_count = 0
     partial_count = 0
     unavailable_count = 0
     year_counts: dict[int, int] = {}
 
-    for result in islice(iterator, limit + 1):
-        if type(result) is not TacticalPrioritizationResult:
-            raise _fail(
-                SnapshotGenerationInputError,
-                _GENERATION_STAGE_INPUT,
-                "element_not_tactical_prioritization_result",
-            )
-        try:
-            validate_tactical_prioritization_result(result)
-        except Exception:
-            raise _fail(
-                SnapshotGenerationUpstreamError,
-                _GENERATION_STAGE_UPSTREAM,
-                "upstream_result_invalid",
-            ) from None
-        _check_policy_compatibility(result, policy)
-        summary = result.matchup_query
-        player = summary.player
-        opponent = summary.opponent
-        if player == opponent:
-            raise _fail(
-                SnapshotGenerationKeyError,
-                _GENERATION_STAGE_KEY,
-                "player_equals_opponent",
-            )
-        as_of = _civil_as_of_date(summary.as_of_date)
-        if as_of >= SEALED_TEST_FIRST_DAY:
-            raise _fail(
-                SnapshotGenerationTemporalError,
-                _GENERATION_STAGE_TEMPORAL,
-                "as_of_date_in_sealed_test_range",
-            )
-        key = (player, opponent, as_of)
-        upstream_fingerprint = tactical_prioritization_result_fingerprint(result)
-        previous = seen.get(key)
-        if previous is not None:
-            reason = (
-                "duplicate_key_exact"
-                if previous == upstream_fingerprint
-                else "duplicate_key_conflicting"
-            )
-            raise _fail(SnapshotGenerationKeyError, _GENERATION_STAGE_KEY, reason)
-        seen[key] = upstream_fingerprint
-        materialized.append(result)
-        if result.state is TacticalPrioritizationState.AVAILABLE:
-            available_count += 1
-        elif result.state is TacticalPrioritizationState.PARTIALLY_AVAILABLE:
-            partial_count += 1
-        else:
-            unavailable_count += 1
-        year_counts[as_of.year] = year_counts.get(as_of.year, 0) + 1
+    iteration_failed = False
+    try:
+        bounded_items = islice(iterator, limit + 1)
+        for item in bounded_items:
+            if policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
+                if type(item) is not P10OfflineSnapshotRecord:
+                    raise _fail(
+                        SnapshotGenerationInputError,
+                        _GENERATION_STAGE_INPUT,
+                        "element_not_p10_offline_snapshot_record",
+                    )
+                p10_records.append(item)
+                result = item.prioritization
+            else:
+                if type(item) is not TacticalPrioritizationResult:
+                    raise _fail(
+                        SnapshotGenerationInputError,
+                        _GENERATION_STAGE_INPUT,
+                        "element_not_tactical_prioritization_result",
+                    )
+                result = item
+            if type(result) is not TacticalPrioritizationResult:
+                raise _fail(
+                    SnapshotGenerationInputError,
+                    _GENERATION_STAGE_INPUT,
+                    "element_not_tactical_prioritization_result",
+                )
+            upstream_invalid = False
+            try:
+                validate_tactical_prioritization_result(result)
+            except Exception:
+                upstream_invalid = True
+            if upstream_invalid:
+                raise _fail(
+                    SnapshotGenerationUpstreamError,
+                    _GENERATION_STAGE_UPSTREAM,
+                    "upstream_result_invalid",
+                )
+            _check_policy_compatibility(result, policy)
+            summary = result.matchup_query
+            player = summary.player
+            opponent = summary.opponent
+            if player == opponent:
+                raise _fail(
+                    SnapshotGenerationKeyError,
+                    _GENERATION_STAGE_KEY,
+                    "player_equals_opponent",
+                )
+            as_of = _civil_as_of_date(summary.as_of_date)
+            if as_of >= SEALED_TEST_FIRST_DAY:
+                raise _fail(
+                    SnapshotGenerationTemporalError,
+                    _GENERATION_STAGE_TEMPORAL,
+                    "as_of_date_in_sealed_test_range",
+                )
+            key = (player, opponent, as_of)
+            fingerprint_failed = False
+            try:
+                upstream_fingerprint = tactical_prioritization_result_fingerprint(result)
+            except Exception:
+                fingerprint_failed = True
+                upstream_fingerprint = ""
+            if fingerprint_failed:
+                raise _fail(
+                    SnapshotGenerationUpstreamError,
+                    _GENERATION_STAGE_UPSTREAM,
+                    "upstream_result_invalid",
+                )
+            previous = seen.get(key)
+            if previous is not None:
+                reason = (
+                    "duplicate_key_exact"
+                    if previous == upstream_fingerprint
+                    else "duplicate_key_conflicting"
+                )
+                raise _fail(SnapshotGenerationKeyError, _GENERATION_STAGE_KEY, reason)
+            seen[key] = upstream_fingerprint
+            materialized.append(result)
+            if result.state is TacticalPrioritizationState.AVAILABLE:
+                available_count += 1
+            elif result.state is TacticalPrioritizationState.PARTIALLY_AVAILABLE:
+                partial_count += 1
+            else:
+                unavailable_count += 1
+            year_counts[as_of.year] = year_counts.get(as_of.year, 0) + 1
+    except TacticalRecommendationSnapshotGenerationError:
+        raise
+    except Exception:
+        iteration_failed = True
+    if iteration_failed:
+        raise _fail(
+            SnapshotGenerationInputError,
+            _GENERATION_STAGE_INPUT,
+            "element_not_tactical_prioritization_result",
+        )
 
     if len(materialized) > limit:
         raise _fail(
@@ -659,15 +767,14 @@ def generate_tactical_recommendation_snapshot(
         )
 
     inputs_received = len(materialized)
-    keys = tuple(seen)
-    if policy.mode is SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
+    if policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
         if inputs_received != policy.required_entries:
             raise _fail(
                 SnapshotGenerationUniverseError,
                 _GENERATION_STAGE_UNIVERSE,
                 "universe_entry_count_mismatch",
             )
-        fold_orientations = _reconcile_p10_universe(keys, policy)
+        fold_orientations = _reconcile_p10_universe(tuple(p10_records), policy)
     else:
         fold_orientations = tuple(sorted(year_counts.items()))
 
@@ -689,7 +796,7 @@ def generate_tactical_recommendation_snapshot(
             "p13_snapshot_build_failed",
         ) from None
 
-    if policy.mode is SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
+    if policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
         estimated_universe_bytes = (
             -(-len(serialized) // inputs_received) * policy.required_entries
         )
@@ -955,14 +1062,14 @@ def validate_tactical_recommendation_snapshot_generation_result(
         raise ValueError("Particiones agregadas P14 inconsistentes.")
     if snapshot_entry_count == 0:
         if (
-            result.state is not SNAPSHOT_GENERATION_STATE_EMPTY_INPUT
-            or result.policy.mode is SNAPSHOT_GENERATION_MODE_P10_OFFLINE
+            result.state != SNAPSHOT_GENERATION_STATE_EMPTY_INPUT
+            or result.policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE
             or result.reason_codes != (_STATE_REASON_EMPTY_INPUT,)
         ):
             raise ValueError("Estado empty_input fuera del contrato cerrado.")
     else:
         if (
-            result.state is not SNAPSHOT_GENERATION_STATE_AVAILABLE
+            result.state != SNAPSHOT_GENERATION_STATE_AVAILABLE
             or result.reason_codes != ()
         ):
             raise ValueError("Estado available fuera del contrato cerrado.")
@@ -975,7 +1082,7 @@ def validate_tactical_recommendation_snapshot_generation_result(
         or diagnostics.canonical_bytes != result.serialized_bytes
     ):
         raise ValueError("Instrumentacion P14 inconsistente.")
-    if result.policy.mode is SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
+    if result.policy.mode == SNAPSHOT_GENERATION_MODE_P10_OFFLINE:
         expected_estimate = -(-result.serialized_bytes // result.entries_generated) * (
             result.policy.required_entries
         )
@@ -997,6 +1104,7 @@ __all__ = (
     "GENERATION_STAGES",
     "GENERIC_SNAPSHOT_GENERATION_POLICY",
     "P10_OFFLINE_SNAPSHOT_GENERATION_POLICY",
+    "P10OfflineSnapshotRecord",
     "SEALED_TEST_FIRST_DAY",
     "SNAPSHOT_GENERATION_MODE_GENERIC",
     "SNAPSHOT_GENERATION_MODE_P10_OFFLINE",

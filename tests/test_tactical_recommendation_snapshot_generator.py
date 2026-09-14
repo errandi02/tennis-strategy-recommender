@@ -82,13 +82,6 @@ def _clone_summary(src, **overrides):
     return clone
 
 
-def _clone_result(src, **overrides):
-    clone = object.__new__(type(src))
-    for name, value in vars(src).items():
-        object.__setattr__(clone, name, overrides.get(name, value))
-    return clone
-
-
 def _mini_p10_policy(*, required_entries: int, required_pairs: int, folds):
     policy = object.__new__(p14.SnapshotGenerationPolicy)
     values = dict(
@@ -109,6 +102,24 @@ def _mini_p10_policy(*, required_entries: int, required_pairs: int, folds):
     for name, value in values.items():
         object.__setattr__(policy, name, value)
     return policy
+
+
+def _p10_records(results, match_ids=None):
+    values = tuple(results)
+    if match_ids is None:
+        match_ids = tuple(f"MATCH_{index // 2}" for index in range(len(values)))
+    return tuple(
+        p14.P10OfflineSnapshotRecord(
+            target_match_id=match_ids[index],
+            fold=f"validation_{result.matchup_query.as_of_date[:4]}",
+            orientation=(
+                "player_1_vs_player_2" if index % 2 == 0
+                else "player_2_vs_player_1"
+            ),
+            prioritization=result,
+        )
+        for index, result in enumerate(values)
+    )
 
 
 class _CountingIterator:
@@ -181,6 +192,7 @@ def test_a3_closed_generation_stages_and_reason_codes():
         {
             "empty_input",
             "element_not_tactical_prioritization_result",
+            "element_not_p10_offline_snapshot_record",
             "upstream_result_invalid",
             "scoring_policy_mismatch",
             "matchup_query_policy_mismatch",
@@ -390,6 +402,20 @@ def test_b11_upstream_invalid_result(monkeypatch):
     assert excinfo.value.stage == "upstream"
     assert excinfo.value.reason_code == "upstream_result_invalid"
     assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None
+
+
+def test_b11_hostile_iterator_error_is_sanitized():
+    def hostile():
+        yield _r("available", 0, SENTINEL_PLAYER, SENTINEL_OPPONENT)
+        raise RuntimeError("PRIVATE_ITERATOR_SECRET")
+
+    with pytest.raises(p14.SnapshotGenerationInputError) as excinfo:
+        p14.generate_tactical_recommendation_snapshot(hostile())
+    assert excinfo.value.reason_code == "element_not_tactical_prioritization_result"
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None
+    assert "PRIVATE_ITERATOR_SECRET" not in repr(excinfo.value)
 
 
 def test_b12_self_match_branch(monkeypatch):
@@ -698,7 +724,9 @@ def test_e4_p10_full_path_mini_policy_exact_universe(monkeypatch):
     monkeypatch.setattr(p14, "validate_snapshot_generation_policy", lambda _p: None)
     results = _four()
     policy = _mini_p10_policy(required_entries=4, required_pairs=2, folds=((2021, 4),))
-    result = p14.generate_tactical_recommendation_snapshot(results, policy=policy)
+    result = p14.generate_tactical_recommendation_snapshot(
+        _p10_records(results), policy=policy
+    )
     assert result.state == p14.SNAPSHOT_GENERATION_STATE_AVAILABLE
     assert result.fold_orientations == ((2021, 4),)
     assert result.diagnostics.estimated_universe_bytes == result.serialized_bytes
@@ -713,8 +741,9 @@ def test_e4b_p10_reciprocal_orientation_missing(monkeypatch):
         _r("available", 0, "C1", "D1"),
     ]
     policy = _mini_p10_policy(required_entries=3, required_pairs=2, folds=((2021, 3),))
+    records = _p10_records(results, ("MATCH_0", "MATCH_0", "MATCH_1"))
     with pytest.raises(p14.SnapshotGenerationUniverseError) as excinfo:
-        p14.generate_tactical_recommendation_snapshot(results, policy=policy)
+        p14.generate_tactical_recommendation_snapshot(records, policy=policy)
     assert excinfo.value.stage == "universe"
     assert (
         excinfo.value.reason_code == "universe_reciprocal_orientation_missing"
@@ -731,7 +760,9 @@ def test_e4c_p10_fold_distribution_mismatch(monkeypatch):
     )
     policy = _mini_p10_policy(required_entries=4, required_pairs=2, folds=((2021, 4),))
     with pytest.raises(p14.SnapshotGenerationUniverseError) as excinfo:
-        p14.generate_tactical_recommendation_snapshot(results, policy=policy)
+        p14.generate_tactical_recommendation_snapshot(
+            _p10_records(results), policy=policy
+        )
     assert excinfo.value.reason_code == "universe_fold_distribution_mismatch"
 
 
@@ -739,61 +770,110 @@ def test_e4d_p10_pair_count_mismatch(monkeypatch):
     monkeypatch.setattr(p14, "validate_snapshot_generation_policy", lambda _p: None)
     policy = _mini_p10_policy(required_entries=4, required_pairs=3, folds=((2021, 4),))
     with pytest.raises(p14.SnapshotGenerationUniverseError) as excinfo:
-        p14.generate_tactical_recommendation_snapshot(_four(), policy=policy)
+        p14.generate_tactical_recommendation_snapshot(
+            _p10_records(_four()), policy=policy
+        )
     assert excinfo.value.reason_code == "universe_reciprocal_pair_count_mismatch"
 
 
+def test_e4d_modes_require_distinct_element_contracts(monkeypatch):
+    monkeypatch.setattr(p14, "validate_snapshot_generation_policy", lambda _p: None)
+    policy = _mini_p10_policy(required_entries=2, required_pairs=1, folds=((2021, 2),))
+    with pytest.raises(p14.SnapshotGenerationInputError) as p10_error:
+        p14.generate_tactical_recommendation_snapshot(_sentinel_pair(), policy=policy)
+    assert p10_error.value.reason_code == "element_not_p10_offline_snapshot_record"
+    with pytest.raises(p14.SnapshotGenerationInputError):
+        p14.generate_tactical_recommendation_snapshot(_p10_records(_sentinel_pair()))
+
+
+def test_e4d_same_players_same_day_different_matches_are_not_false_pairs(monkeypatch):
+    monkeypatch.setattr(p14, "validate_snapshot_generation_policy", lambda _p: None)
+    first, second = _sentinel_pair()
+    records = (
+        p14.P10OfflineSnapshotRecord("MATCH_A", "validation_2021", "player_1_vs_player_2", first),
+        p14.P10OfflineSnapshotRecord("MATCH_A", "validation_2021", "player_2_vs_player_1", second),
+        p14.P10OfflineSnapshotRecord("MATCH_B", "validation_2021", "player_1_vs_player_2", first),
+        p14.P10OfflineSnapshotRecord("MATCH_B", "validation_2021", "player_2_vs_player_1", second),
+    )
+    policy = _mini_p10_policy(required_entries=4, required_pairs=2, folds=((2021, 4),))
+    with pytest.raises(p14.SnapshotGenerationKeyError) as captured:
+        p14.generate_tactical_recommendation_snapshot(records, policy=policy)
+    assert captured.value.reason_code == "duplicate_key_exact"
+
+
 @pytest.mark.parametrize(
-    ("keys", "policy", "expected"),
+    "overrides",
+    [
+        {"target_match_id": ""},
+        {"target_match_id": True},
+        {"fold": "validation_2022"},
+        {"orientation": "reversed"},
+        {"prioritization": object()},
+    ],
+)
+def test_e4d_p10_record_is_strict_and_temporally_coherent(overrides):
+    values = {
+        "target_match_id": "MATCH_A",
+        "fold": "validation_2021",
+        "orientation": "player_1_vs_player_2",
+        "prioritization": _sentinel_pair()[0],
+    }
+    values.update(overrides)
+    with pytest.raises((TypeError, p14.TacticalRecommendationSnapshotGenerationError)):
+        p14.P10OfflineSnapshotRecord(**values)
+
+
+@pytest.mark.parametrize(
+    ("records", "policy", "expected"),
     [
         (
-            (
-                ("A", "B", date(2021, 1, 1)),
-                ("B", "A", date(2021, 1, 1)),
-                ("C", "D", date(2021, 1, 1)),
-                ("D", "C", date(2021, 1, 1)),
-            ),
+            _p10_records((
+                _r("available", 0, "A", "B"),
+                _r("absent", 0, "B", "A"),
+                _r("available", 0, "C", "D"),
+                _r("absent", 0, "D", "C"),
+            )),
             SimpleNamespace(required_reciprocal_pairs=2, expected_fold_orientations=((2021, 4),)),
             ((2021, 4),),
         ),
         (
-            (
-                ("A", "B", date(2021, 1, 1)),
-                ("B", "A", date(2021, 1, 1)),
-                ("C", "D", date(2021, 1, 1)),
-            ),
+            _p10_records((
+                _r("available", 0, "A", "B"),
+                _r("absent", 0, "B", "A"),
+                _r("available", 0, "C", "D"),
+            ), ("MATCH_0", "MATCH_0", "MATCH_1")),
             SimpleNamespace(required_reciprocal_pairs=2, expected_fold_orientations=((2021, 3),)),
             "universe_reciprocal_orientation_missing",
         ),
         (
-            (
-                ("A", "B", date(2021, 1, 1)),
-                ("B", "A", date(2021, 1, 1)),
-                ("C", "D", date(2021, 1, 1)),
-                ("D", "C", date(2021, 1, 1)),
-            ),
+            _p10_records((
+                _r("available", 0, "A", "B"),
+                _r("absent", 0, "B", "A"),
+                _r("available", 0, "C", "D"),
+                _r("absent", 0, "D", "C"),
+            )),
             SimpleNamespace(required_reciprocal_pairs=3, expected_fold_orientations=((2021, 4),)),
             "universe_reciprocal_pair_count_mismatch",
         ),
         (
-            (
-                ("A", "B", date(2021, 1, 1)),
-                ("B", "A", date(2021, 1, 1)),
-                ("C", "D", date(2022, 1, 1)),
-                ("D", "C", date(2022, 1, 1)),
-            ),
+            _p10_records((
+                _r("available", 0, "A", "B"),
+                _r("absent", 0, "B", "A"),
+                _r("available", 0, "C", "D", date(2022, 1, 1)),
+                _r("absent", 0, "D", "C", date(2022, 1, 1)),
+            )),
             SimpleNamespace(required_reciprocal_pairs=2, expected_fold_orientations=((2021, 4),)),
             "universe_fold_distribution_mismatch",
         ),
     ],
 )
-def test_e4e_reconcile_direct(keys, policy, expected):
+def test_e4e_reconcile_direct(records, policy, expected):
     if isinstance(expected, str):
         with pytest.raises(p14.SnapshotGenerationUniverseError) as excinfo:
-            p14._reconcile_p10_universe(keys, policy)
+            p14._reconcile_p10_universe(records, policy)
         assert excinfo.value.reason_code == expected
     else:
-        assert p14._reconcile_p10_universe(keys, policy) == expected
+        assert p14._reconcile_p10_universe(records, policy) == expected
 
 
 def test_e5_validator_rejects_wrong_types():
@@ -880,7 +960,9 @@ def test_e5b_validator_detects_sealed_dates_inside_snapshot():
 def test_e5c_validator_rejects_p10_estimation_tamper(monkeypatch):
     monkeypatch.setattr(p14, "validate_snapshot_generation_policy", lambda _p: None)
     policy = _mini_p10_policy(required_entries=4, required_pairs=2, folds=((2021, 4),))
-    baseline = p14.generate_tactical_recommendation_snapshot(_four(), policy=policy)
+    baseline = p14.generate_tactical_recommendation_snapshot(
+        _p10_records(_four()), policy=policy
+    )
     clone = _clone_result(
         baseline,
         diagnostics=dataclasses.replace(
@@ -975,9 +1057,22 @@ def test_f2_canonical_has_no_privacy_identifiers():
 def test_f3_generation_fingerprint_derivation():
     result = p14.generate_tactical_recommendation_snapshot(_sentinel_pair())
     canonical = p14.canonical_snapshot_generation_json(result)
+    independent_payload = json.loads(canonical.decode("utf-8"))
+    assert "fingerprint" not in independent_payload
+    independently_serialized = json.dumps(
+        independent_payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     expected = (
-        sha256(p14.GENERATION_FINGERPRINT_DOMAIN + canonical).hexdigest().upper()
+        sha256(
+            b"tennis-tactical-recommendation-snapshot-generation\x00"
+            + independently_serialized
+        ).hexdigest().upper()
     )
+    assert p14.GENERATION_FINGERPRINT_DOMAIN == b"tennis-tactical-recommendation-snapshot-generation\x00"
     assert p14.snapshot_generation_fingerprint(result) == expected
     assert len(expected) == 64
     assert expected == expected.upper()
@@ -1290,6 +1385,7 @@ def test_j1_public_surface_exact():
         "GENERATION_STAGES",
         "GENERIC_SNAPSHOT_GENERATION_POLICY",
         "P10_OFFLINE_SNAPSHOT_GENERATION_POLICY",
+        "P10OfflineSnapshotRecord",
         "SEALED_TEST_FIRST_DAY",
         "SNAPSHOT_GENERATION_MODE_GENERIC",
         "SNAPSHOT_GENERATION_MODE_P10_OFFLINE",
