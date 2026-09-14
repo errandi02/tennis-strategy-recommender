@@ -29,8 +29,9 @@ Frontera de I/O: el unico acceso a disco ocurre en
 ``persist_persisted_tactical_recommendation_snapshot`` y
 ``verify_persisted_tactical_recommendation_snapshot``. La persistencia
 es atomica (temporal en el mismo directorio, flush, fsync,
-``os.replace``); ante fallo se limpian temporales y se preserva el
-destino previo. El provider inmutable no toca disco tras construirse.
+``os.replace``). Ante un fallo anterior al replace se limpian temporales
+y se preserva el destino previo; un fallo posterior no implica rollback.
+El provider inmutable no toca disco tras construirse.
 
 ``load`` levanta los errores internos P13 finos;
 ``create_persisted_tactical_recommendation_provider`` es el unico punto
@@ -65,10 +66,12 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from datetime import date
 from hashlib import sha256
+from itertools import islice
 import json
 import math
 import os
 import re
+import stat
 import tempfile
 from types import MappingProxyType
 from typing import Final
@@ -98,6 +101,7 @@ from src.recommender.tactical_recommendation_service import (
     RecommendationNotFoundError,
     TacticalRecommendationQuery,
     UpstreamContractViolationError,
+    validate_tactical_recommendation_query,
 )
 
 
@@ -111,6 +115,10 @@ SNAPSHOT_SNAPSHOT_DOMAIN: Final = b"tennis-persisted-tactical-recommendation-sna
 MAX_SNAPSHOT_BYTES: Final = 32 * 1024 * 1024
 MAX_ENTRIES: Final = 100_000
 MAX_JSON_DEPTH: Final = 64
+MAX_JSON_STRING_LENGTH: Final = 4096
+MAX_JSON_ARRAY_ITEMS: Final = 100_000
+MAX_JSON_OBJECT_KEYS: Final = 128
+MAX_JSON_INTEGER_ABS: Final = 9_007_199_254_740_991
 
 _CIVIL_ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 _SHA256_UPPER: Final = re.compile(r"[0-9A-F]{64}")
@@ -447,9 +455,12 @@ def validate_persisted_tactical_recommendation_entry(entry: object) -> None:
     validate_tactical_recommendation_snapshot_key(entry.key)
     if type(entry.result) is not TacticalPrioritizationResult:
         raise SnapshotUpstreamInvalidError()
+    upstream_invalid = False
     try:
         validate_tactical_prioritization_result(entry.result)
     except Exception:
+        upstream_invalid = True
+    if upstream_invalid:
         raise SnapshotUpstreamInvalidError()
     if entry.result.policy != default_tactical_scoring_policy():
         raise SnapshotIntegrityError()
@@ -461,11 +472,15 @@ def validate_persisted_tactical_recommendation_entry(entry: object) -> None:
     ):
         raise SnapshotIntegrityError()
     _strict_sha(entry.result_fingerprint, "result_fingerprint")
+    upstream_invalid = False
     try:
         expected_result_fingerprint = tactical_prioritization_result_fingerprint(
             entry.result
         )
     except Exception:
+        upstream_invalid = True
+        expected_result_fingerprint = None
+    if upstream_invalid:
         raise SnapshotUpstreamInvalidError()
     if entry.result_fingerprint != expected_result_fingerprint:
         raise SnapshotIntegrityError()
@@ -584,21 +599,31 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 def _check_json_tree(value: object, *, depth: int = 0) -> None:
     if depth > MAX_JSON_DEPTH:
         raise SnapshotMalformedError()
-    if value is None or type(value) is bool or type(value) is int:
+    if value is None or type(value) is bool:
+        return
+    if type(value) is int:
+        if abs(value) > MAX_JSON_INTEGER_ABS:
+            raise SnapshotMalformedError()
         return
     if type(value) is float:
         if not math.isfinite(value):
             raise SnapshotMalformedError()
         return
     if type(value) is str:
+        if len(value) > MAX_JSON_STRING_LENGTH:
+            raise SnapshotMalformedError()
         if any(ord(character) < 0x20 or character == "\x7f" for character in value):
             raise SnapshotMalformedError()
         return
     if type(value) is list:
+        if len(value) > MAX_JSON_ARRAY_ITEMS:
+            raise SnapshotMalformedError()
         for item in value:
             _check_json_tree(item, depth=depth + 1)
         return
     if type(value) is dict:
+        if len(value) > MAX_JSON_OBJECT_KEYS:
+            raise SnapshotMalformedError()
         for child_key, child_value in value.items():
             if type(child_key) is not str:
                 raise SnapshotMalformedError()
@@ -625,12 +650,23 @@ def _entry_for_result(
     iso = summary.as_of_date
     if type(iso) is not str or _CIVIL_ISO_DATE.fullmatch(iso) is None:
         raise SnapshotUpstreamInvalidError()
+    invalid_date = False
     try:
         as_of = date.fromisoformat(iso)
     except ValueError:
+        invalid_date = True
+        as_of = date.min
+    if invalid_date:
         raise SnapshotUpstreamInvalidError()
     key = TacticalRecommendationSnapshotKey(summary.player, summary.opponent, as_of)
-    result_fingerprint = tactical_prioritization_result_fingerprint(result)
+    upstream_invalid = False
+    try:
+        result_fingerprint = tactical_prioritization_result_fingerprint(result)
+    except Exception:
+        upstream_invalid = True
+        result_fingerprint = ""
+    if upstream_invalid:
+        raise SnapshotUpstreamInvalidError()
     entry_fingerprint = _entry_fingerprint_of(key, result_fingerprint)
     return PersistedTacticalRecommendationEntry(
         key, result, result_fingerprint, entry_fingerprint
@@ -646,21 +682,32 @@ def build_persisted_tactical_recommendation_snapshot(
     se ordenan canonicamente. Duplicados exactos o en conflicto se
     rechazan.
     """
-    if (
-        type(results) not in (list, tuple)
-        and not (hasattr(results, "__iter__") and not isinstance(results, (str, bytes)))
-    ):
+    if isinstance(results, (str, bytes, bytearray, dict)):
         raise TypeError("results debe ser una secuencia de resultados.")
-    materialized = tuple(results)
+    try:
+        iterator = iter(results)  # type: ignore[arg-type]
+    except TypeError:
+        raise TypeError("results debe ser una secuencia de resultados.") from None
+    consumption_failed = False
+    try:
+        materialized = tuple(islice(iterator, MAX_ENTRIES + 1))
+    except Exception:
+        consumption_failed = True
+        materialized = ()
+    if consumption_failed:
+        raise SnapshotUpstreamInvalidError()
     if len(materialized) > MAX_ENTRIES:
         raise SnapshotIncompatibleError()
     by_key: dict[TacticalRecommendationSnapshotKey, PersistedTacticalRecommendationEntry] = {}
     for result in materialized:
         if type(result) is not TacticalPrioritizationResult:
             raise SnapshotUpstreamInvalidError()
+        upstream_invalid = False
         try:
             validate_tactical_prioritization_result(result)
-        except (ValueError, TypeError):
+        except Exception:
+            upstream_invalid = True
+        if upstream_invalid:
             raise SnapshotUpstreamInvalidError()
         entry = _entry_for_result(result)
         if entry.key in by_key:
@@ -768,10 +815,14 @@ def _pairs_value(value: object, value_type: type) -> tuple[tuple[str, object], .
 def _enum_value(value: object, enum_cls: type) -> object:
     if type(value) is not str:
         raise SnapshotIncompatibleError()
+    parsed: object | None = None
     try:
-        return enum_cls(value)
+        parsed = enum_cls(value)
     except ValueError:
+        pass
+    if parsed is None:
         raise SnapshotUpstreamInvalidError()
+    return parsed
 
 
 def _check_keys(value: object, contract_cls: type) -> dict[str, object]:
@@ -935,10 +986,14 @@ def _result_from_payload(value: object) -> TacticalPrioritizationResult:
 def _civil_date_from_iso(value: str) -> date:
     if _CIVIL_ISO_DATE.fullmatch(value) is None:
         raise SnapshotIntegrityError()
+    parsed: date | None = None
     try:
-        return date.fromisoformat(value)
+        parsed = date.fromisoformat(value)
     except ValueError:
+        pass
+    if parsed is None:
         raise SnapshotIntegrityError()
+    return parsed
 
 
 def _entry_from_payload(value: object) -> PersistedTacticalRecommendationEntry:
@@ -1029,6 +1084,95 @@ def _snapshot_from_structure(structure: object) -> PersistedTacticalRecommendati
     return snapshot
 
 
+def _snapshot_path(value: object) -> Path:
+    """Normaliza una ruta local sin ejecutar PathLike arbitrarios."""
+    if type(value) is str:
+        raw = value
+    elif isinstance(value, Path):
+        raw = str(value)
+    else:
+        raise SnapshotIncompatibleError()
+    if not raw or raw != raw.strip() or "\x00" in raw:
+        raise SnapshotIncompatibleError()
+    normalized = raw.replace("\\", "/")
+    lowered = normalized.casefold()
+    if (
+        lowered.startswith(("file:", "vscode:", "http:", "https:"))
+        or normalized.startswith("//")
+        or normalized == "~"
+        or normalized.startswith("~/")
+        or any(part == ".." for part in normalized.split("/"))
+    ):
+        raise SnapshotIncompatibleError()
+    return Path(raw)
+
+
+def _path_has_linked_parent(path: Path) -> bool:
+    """Detecta symlinks/junctions existentes en la cadena de padres."""
+    for parent in (path.parent, *path.parent.parents):
+        try:
+            if parent.is_symlink():
+                return True
+            is_junction = getattr(parent, "is_junction", None)
+            if is_junction is not None and is_junction():
+                return True
+        except OSError:
+            return True
+    return False
+
+
+def _read_snapshot_bytes(path: Path) -> bytes:
+    """Lee como maximo el limite contractual y reduce carreras con symlinks."""
+    failure: type[PersistedSnapshotError] | None = None
+    raw: bytes | None = None
+    descriptor: int | None = None
+    try:
+        if _path_has_linked_parent(path):
+            raise SnapshotUnavailableError()
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            raise SnapshotNotFoundError()
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise SnapshotUnavailableError()
+        if before.st_size == 0 or before.st_size > MAX_SNAPSHOT_BYTES:
+            raise SnapshotUnavailableError()
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise SnapshotUnavailableError()
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise SnapshotUnavailableError()
+        chunks: list[bytes] = []
+        remaining = MAX_SNAPSHOT_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if not raw or len(raw) > MAX_SNAPSHOT_BYTES:
+            raise SnapshotUnavailableError()
+    except PersistedSnapshotError as internal:
+        failure = type(internal)
+    except OSError:
+        failure = SnapshotUnavailableError
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                if failure is None:
+                    failure = SnapshotUnavailableError
+    if failure is not None:
+        raise failure()
+    if raw is None:
+        raise SnapshotUnavailableError()
+    return raw
+
+
 def load_persisted_tactical_recommendation_snapshot(
     snapshot_path: object,
 ) -> PersistedTacticalRecommendationSnapshot:
@@ -1041,44 +1185,43 @@ def load_persisted_tactical_recommendation_snapshot(
     publica). Una unica lectura de disco por ciclo de vida del provider;
     no se escribe, regenera ni repara ningun fichero.
     """
-    if not isinstance(snapshot_path, (str, os.PathLike)):
-        raise SnapshotIncompatibleError()
-    path = Path(snapshot_path)
-    try:
-        if path.is_symlink():
-            raise SnapshotUnavailableError()
-        if not path.exists():
-            raise SnapshotNotFoundError()
-        if path.is_dir():
-            raise SnapshotUnavailableError()
-        size = path.stat().st_size
-        if size == 0 or size > MAX_SNAPSHOT_BYTES:
-            raise SnapshotUnavailableError()
-        raw = path.read_bytes()
-    except PersistedSnapshotError:
-        raise
-    except OSError:
-        raise SnapshotUnavailableError()
+    path = _snapshot_path(snapshot_path)
+    raw = _read_snapshot_bytes(path)
+    malformed = False
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
+        malformed = True
+        text = ""
+    if malformed:
         raise SnapshotMalformedError()
+    malformed = False
     try:
         structure = json.loads(
             text,
             parse_constant=_reject_json_constant,
             object_pairs_hook=_reject_duplicate_keys,
         )
-    except ValueError:
+    except (ValueError, RecursionError):
+        malformed = True
+        structure = None
+    if malformed:
         raise SnapshotMalformedError()
+    reconstruction_failure: type[PersistedSnapshotError] | None = None
+    reconstructed: PersistedTacticalRecommendationSnapshot | None = None
     try:
-        return _snapshot_from_structure(structure)
-    except PersistedSnapshotError:
-        raise
-    except (ValueError, TypeError):
+        reconstructed = _snapshot_from_structure(structure)
+    except PersistedSnapshotError as internal:
+        reconstruction_failure = type(internal)
+    except (ValueError, TypeError, RecursionError):
         # Bytes parseables que no reconstruyen un resultado upstream
         # validado: violacion contractual, no fallo interno.
+        reconstruction_failure = SnapshotUpstreamInvalidError
+    if reconstruction_failure is not None:
+        raise reconstruction_failure()
+    if reconstructed is None:
         raise SnapshotUpstreamInvalidError()
+    return reconstructed
 
 
 def serialize_persisted_tactical_recommendation_snapshot(
@@ -1088,25 +1231,32 @@ def serialize_persisted_tactical_recommendation_snapshot(
     if type(snapshot) is not PersistedTacticalRecommendationSnapshot:
         raise SnapshotIntegrityError()
     validate_persisted_tactical_recommendation_snapshot(snapshot)
-    return _canonical_json_bytes(_snapshot_payload(snapshot, include_fingerprint=True))
+    raw = _canonical_json_bytes(_snapshot_payload(snapshot, include_fingerprint=True))
+    if len(raw) > MAX_SNAPSHOT_BYTES:
+        raise SnapshotUnavailableError()
+    return raw
 
 
 def persist_persisted_tactical_recommendation_snapshot(
     snapshot: object, destination: object
 ) -> None:
-    """Escribe atomicamente el snapshot (temporal + fsync + os.replace)."""
+    """Escribe atomicamente hasta ``os.replace``.
+
+    Un fallo previo preserva el destino anterior. Tras un replace exitoso
+    el nuevo destino puede quedar publicado aunque falle el fsync posterior
+    del directorio; no se promete rollback despues del punto de commit.
+    """
     failure: type[PersistedSnapshotError] | None = None
     destination_path: Path | None = None
     temp_path: Path | None = None
     try:
         if type(snapshot) is not PersistedTacticalRecommendationSnapshot:
             raise SnapshotIncompatibleError()
-        if not isinstance(destination, (str, os.PathLike)):
-            raise SnapshotIncompatibleError()
         validate_persisted_tactical_recommendation_snapshot(snapshot)
-        destination_path = Path(os.fspath(destination))
+        destination_path = _snapshot_path(destination)
         if (
-            destination_path.is_symlink()
+            _path_has_linked_parent(destination_path)
+            or destination_path.is_symlink()
             or destination_path.is_dir()
             or not destination_path.parent.is_dir()
         ):
@@ -1168,10 +1318,14 @@ class PersistedTacticalRecommendationProvider:
     consultas repetidas.
     """
 
-    __slots__ = ("snapshot", "snapshot_path")
+    __slots__ = ("snapshot",)
 
     snapshot: PersistedTacticalRecommendationSnapshot
-    snapshot_path: str
+
+    def __post_init__(self) -> None:
+        if type(self.snapshot) is not PersistedTacticalRecommendationSnapshot:
+            raise SnapshotIntegrityError()
+        validate_persisted_tactical_recommendation_snapshot(self.snapshot)
 
     def fetch_tactical_prioritization(
         self, query: TacticalRecommendationQuery
@@ -1182,6 +1336,7 @@ class PersistedTacticalRecommendationProvider:
             if type(query) is not TacticalRecommendationQuery:
                 service_error = InvalidRequestError
             else:
+                validate_tactical_recommendation_query(query)
                 key = TacticalRecommendationSnapshotKey(
                     query.player_id, query.opponent_id, query.as_of_date
                 )
@@ -1190,6 +1345,8 @@ class PersistedTacticalRecommendationProvider:
                     service_error = RecommendationNotFoundError
                 else:
                     result = entry.result
+        except InvalidRequestError:
+            service_error = InvalidRequestError
         except PersistedSnapshotError:
             service_error = InvalidRequestError
         except Exception:
@@ -1206,15 +1363,12 @@ def create_persisted_tactical_recommendation_provider(
     service_error: type[Exception] | None = None
     provider: PersistedTacticalRecommendationProvider | None = None
     try:
-        if not isinstance(snapshot_path, (str, os.PathLike)):
-            raise SnapshotIncompatibleError()
         snapshot = load_persisted_tactical_recommendation_snapshot(snapshot_path)
-        provider = PersistedTacticalRecommendationProvider(
-            snapshot=snapshot,
-            snapshot_path=os.fspath(snapshot_path),
-        )
+        provider = PersistedTacticalRecommendationProvider(snapshot=snapshot)
     except PersistedSnapshotError as internal:
-        service_error = _SNAPSHOT_ERROR_TO_SERVICE_ERROR[type(internal)]
+        service_error = _SNAPSHOT_ERROR_TO_SERVICE_ERROR.get(
+            type(internal), InternalServiceError
+        )
     except Exception:
         service_error = InternalServiceError
     if service_error is not None:
@@ -1226,7 +1380,11 @@ def create_persisted_tactical_recommendation_provider(
 
 __all__ = (
     "MAX_ENTRIES",
+    "MAX_JSON_ARRAY_ITEMS",
     "MAX_JSON_DEPTH",
+    "MAX_JSON_INTEGER_ABS",
+    "MAX_JSON_OBJECT_KEYS",
+    "MAX_JSON_STRING_LENGTH",
     "MAX_SNAPSHOT_BYTES",
     "PersistedSnapshotError",
     "PersistedTacticalRecommendationEntry",
@@ -1237,6 +1395,7 @@ __all__ = (
     "SNAPSHOT_FORMAT_VERSION",
     "SNAPSHOT_SCHEMA_VERSION",
     "SNAPSHOT_SNAPSHOT_DOMAIN",
+    "SNAPSHOT_UPSTREAM_RESULT_CONTRACT",
     "SnapshotIntegrityError",
     "SnapshotIncompatibleError",
     "SnapshotMalformedError",

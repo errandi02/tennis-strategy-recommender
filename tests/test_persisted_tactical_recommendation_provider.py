@@ -11,14 +11,13 @@ from __future__ import annotations
 import ast
 import concurrent.futures
 from dataclasses import FrozenInstanceError
-from datetime import date
+from datetime import date, datetime
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import re
 import shutil
-import tempfile
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +37,7 @@ from src.recommender.tactical_recommendation_contract import (
     canonical_tactical_recommendation_json,
 )
 from src.recommender.tactical_recommendation_service import (
+    InternalServiceError,
     InvalidRequestError,
     ProviderUnavailableError,
     RecommendationNotFoundError,
@@ -126,18 +126,16 @@ def base_snapshot() -> "p13.PersistedTacticalRecommendationSnapshot":
     return p13.build_persisted_tactical_recommendation_snapshot(results)
 
 
-@pytest.fixture(scope="module")
-def snapshot_file(base_snapshot) -> Path:
-    directory = Path(tempfile.mkdtemp(prefix="p13-snapshot-"))
-    destination = directory / "snapshot.json"
+@pytest.fixture()
+def snapshot_file(base_snapshot, tmp_path) -> Path:
+    destination = tmp_path / "snapshot.json"
     p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, destination)
-    yield destination
-    shutil.rmtree(directory, ignore_errors=True)
+    return destination
 
 
 @pytest.fixture()
 def provider_path(snapshot_file, tmp_path) -> Path:
-    target = tmp_path / "snapshot.json"
+    target = tmp_path / "provider-snapshot.json"
     shutil.copyfile(snapshot_file, target)
     return target
 
@@ -147,7 +145,7 @@ def provider_path(snapshot_file, tmp_path) -> Path:
 # --------------------------------------------------------------------------
 
 
-def test_build_roundtrips_all_states_and_variants():
+def test_build_roundtrips_all_states_and_variants(tmp_path):
     cases = (
         ("available", 0, False),
         ("available", 0, True),
@@ -155,30 +153,22 @@ def test_build_roundtrips_all_states_and_variants():
         ("partial", 0, False),
         ("absent", 0, False),
     )
-    directory = Path(tempfile.mkdtemp(prefix="p13-build-"))
-    try:
-        for index, (state, variant, reversed_input) in enumerate(cases):
-            result = _prioritization(
-                state,
-                variant,
-                AS_OF_DATE,
-                reversed_input,
-                player=_PLAYER,
-                opponent=_OPPONENT,
-            )
-            snapshot = p13.build_persisted_tactical_recommendation_snapshot([result])
-            raw = p13.serialize_persisted_tactical_recommendation_snapshot(snapshot)
-            loaded = p13.load_persisted_tactical_recommendation_snapshot(
-                _write_snapshot(directory, f"case-{index}.json", raw)
-            )
-            entry = loaded.entries[0]
-            assert entry.key.player == _PLAYER
-            assert entry.key.opponent == _OPPONENT
-            assert entry.key.as_of_date == AS_OF_DATE
-            assert entry.result == result
-            assert entry.result is not result
-    finally:
-        shutil.rmtree(directory, ignore_errors=True)
+    for index, (state, variant, reversed_input) in enumerate(cases):
+        result = _prioritization(
+            state, variant, AS_OF_DATE, reversed_input,
+            player=_PLAYER, opponent=_OPPONENT,
+        )
+        snapshot = p13.build_persisted_tactical_recommendation_snapshot([result])
+        raw = p13.serialize_persisted_tactical_recommendation_snapshot(snapshot)
+        loaded = p13.load_persisted_tactical_recommendation_snapshot(
+            _write_snapshot(tmp_path, f"case-{index}.json", raw)
+        )
+        entry = loaded.entries[0]
+        assert entry.key.player == _PLAYER
+        assert entry.key.opponent == _OPPONENT
+        assert entry.key.as_of_date == AS_OF_DATE
+        assert entry.result == result
+        assert entry.result is not result
 
 
 def test_build_is_order_independent_and_canonically_sorted(base_snapshot):
@@ -236,6 +226,33 @@ def test_build_enforces_entry_cap(monkeypatch):
         p13.build_persisted_tactical_recommendation_snapshot(list(_base_results()))
 
 
+def test_build_consumes_at_most_cap_plus_one(monkeypatch):
+    monkeypatch.setattr(p13, "MAX_ENTRIES", 2)
+    consumed = 0
+
+    def unbounded():
+        nonlocal consumed
+        while True:
+            consumed += 1
+            yield _base_results()[0]
+
+    with pytest.raises(p13.SnapshotIncompatibleError):
+        p13.build_persisted_tactical_recommendation_snapshot(unbounded())
+    assert consumed == 3
+
+
+def test_build_discards_hostile_iterator_exception():
+    def hostile():
+        yield _base_results()[0]
+        raise RuntimeError("PRIVATE_ITERATOR_SECRET")
+
+    with pytest.raises(p13.SnapshotUpstreamInvalidError) as captured:
+        p13.build_persisted_tactical_recommendation_snapshot(hostile())
+    assert captured.value.args == ()
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
 def test_build_empty_snapshot_is_valid(tmp_path):
     empty = p13.build_persisted_tactical_recommendation_snapshot([])
     assert empty.entry_count == 0
@@ -255,6 +272,33 @@ def test_build_key_is_derived_from_result_identity(base_snapshot):
         assert entry.key.player == summary.player
         assert entry.key.opponent == summary.opponent
         assert entry.key.as_of_date == date.fromisoformat(summary.as_of_date)
+
+
+@pytest.mark.parametrize(
+    ("player", "opponent", "as_of_date"),
+    [
+        (True, "B", AS_OF_DATE),
+        (1, "B", AS_OF_DATE),
+        ("A", False, AS_OF_DATE),
+        ("A", "A", AS_OF_DATE),
+        (" A", "B", AS_OF_DATE),
+        ("A", "B", "2021-01-01"),
+        ("A", "B", datetime(2021, 1, 1)),
+    ],
+)
+def test_snapshot_key_rejects_coercions_and_impossible_identity(
+    player, opponent, as_of_date
+):
+    with pytest.raises(p13.SnapshotIntegrityError):
+        p13.TacticalRecommendationSnapshotKey(player, opponent, as_of_date)
+
+
+def test_snapshot_key_identifier_length_boundary():
+    p13.TacticalRecommendationSnapshotKey(
+        "A" * 64, "B" * 64, AS_OF_DATE
+    )
+    with pytest.raises(p13.SnapshotIntegrityError):
+        p13.TacticalRecommendationSnapshotKey("A" * 65, "B", AS_OF_DATE)
 
 
 # --------------------------------------------------------------------------
@@ -399,21 +443,19 @@ def test_persist_overwrites_existing_destination_atomically(base_snapshot, tmp_p
     assert leftovers == []
 
 
-def test_persist_failure_preserves_destination(base_snapshot, tmp_path):
-    if os.geteuid() == 0:
-        pytest.skip("root bypasses file permission bits")
+def test_persist_failure_before_replace_preserves_destination(
+    base_snapshot, tmp_path, monkeypatch
+):
     destination = tmp_path / "snap.json"
     p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, destination)
     before = destination.read_bytes()
-    parent = destination.parent
-    parent.chmod(0o555)
-    try:
-        with pytest.raises(p13.SnapshotUnavailableError):
-            p13.persist_persisted_tactical_recommendation_snapshot(
-                base_snapshot, destination
-            )
-    finally:
-        parent.chmod(0o755)
+
+    def fail_replace(_source, _destination):
+        raise PermissionError("PRIVATE_PATH_SENTINEL")
+
+    monkeypatch.setattr(p13.os, "replace", fail_replace)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, destination)
     assert destination.read_bytes() == before
     leftovers = [
         p.name
@@ -628,24 +670,17 @@ def test_load_rejects_upstream_invalid_results(provider_path):
         )
 
 
-def test_roundtrip_preserves_p10_contract_sensitive_fields(base_snapshot):
+def test_roundtrip_preserves_p10_contract_sensitive_fields(base_snapshot, tmp_path):
     raw = p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
-    directory = Path(tempfile.mkdtemp(prefix="p13-roundtrip-"))
-    try:
-        loaded = p13.load_persisted_tactical_recommendation_snapshot(
-            _write_snapshot(directory, "snap.json", raw)
-        )
-        by_key = {entry.key: entry for entry in loaded.entries}
-        for entry in base_snapshot.entries:
-            rebuild = by_key[entry.key].result
-            validate_tactical_prioritization_result(rebuild)
-            assert entry.result == rebuild
-            assert (
-                tactical_prioritization_result_fingerprint(rebuild)
-                == entry.result_fingerprint
-            )
-    finally:
-        shutil.rmtree(directory, ignore_errors=True)
+    loaded = p13.load_persisted_tactical_recommendation_snapshot(
+        _write_snapshot(tmp_path, "snap.json", raw)
+    )
+    by_key = {entry.key: entry for entry in loaded.entries}
+    for entry in base_snapshot.entries:
+        rebuild = by_key[entry.key].result
+        validate_tactical_prioritization_result(rebuild)
+        assert entry.result == rebuild
+        assert tactical_prioritization_result_fingerprint(rebuild) == entry.result_fingerprint
 
 
 # --------------------------------------------------------------------------
@@ -716,7 +751,8 @@ def test_provider_creation_maps_snapshot_failures(tmp_path, provider_path):
     with pytest.raises(UpstreamContractViolationError):
         p13.create_persisted_tactical_recommendation_provider(corrupted)
     ok = p13.create_persisted_tactical_recommendation_provider(provider_path)
-    assert ok.snapshot_path == str(provider_path)
+    assert not hasattr(ok, "snapshot_path")
+    assert str(provider_path) not in repr(ok)
 
 
 def test_provider_is_frozen_and_slotted(provider_path):
@@ -911,6 +947,39 @@ def test_provider_failure_maps_to_p12_envelope():
     _sentinel_scan(response.text, _PLAYER, _OPPONENT)
 
 
+def test_public_surfaces_do_not_expose_private_sentinels(base_snapshot, tmp_path):
+    client = _api_client_from_snapshot(base_snapshot, tmp_path)
+    sentinels = (
+        "DATE_SECRET_2099_12_31",
+        r"C:\PRIVATE\snapshot.json",
+        "/home/private/snapshot.json",
+        r"\\server\private\snapshot.json",
+        "file:///private/snapshot.json",
+        "SEQUENCE_SECRET_6f27",
+        "MATCH_SECRET_123",
+        "POINT_SECRET_456",
+        "OUTCOME_SECRET_WIN",
+        "EXCEPTION_SECRET_TRACE",
+    )
+    error = client.post(
+        _POST_PATH,
+        json={"player_id": "Ghost", "opponent_id": "Phantom", "as_of_date": "2021-01-01"},
+    )
+    health = client.get(_HEALTH_PATH)
+    openapi = client.get("/openapi.json")
+    for surface in (
+        error.content,
+        health.content,
+        openapi.content,
+        repr(RecommendationNotFoundError()).encode(),
+        error.headers.__repr__().encode(),
+        health.headers.__repr__().encode(),
+    ):
+        for sentinel in sentinels + (_PLAYER, _OPPONENT):
+            assert sentinel.encode() not in surface
+    assert set(client.app.openapi()["paths"]) == {_HEALTH_PATH, _POST_PATH}
+
+
 # --------------------------------------------------------------------------
 # F. Arquitectura
 # --------------------------------------------------------------------------
@@ -962,6 +1031,9 @@ def test_module_has_no_forbidden_imports():
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
     assert imported & _FORBIDDEN_IMPORTS == set()
+    for node in ast.walk(_module_tree()):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            assert node.module != "src.analysis.tactical_recommender_pipeline"
 
 
 def test_module_has_no_import_time_side_effects():
@@ -1075,3 +1147,278 @@ def test_snapshot_constants_are_p13_owned():
     assert p13.SNAPSHOT_UPSTREAM_RESULT_CONTRACT == "tactical_prioritization_result"
     assert PRIORITIZATION_CONTRACT_VERSION
     assert p13.SNAPSHOT_ENTRY_DOMAIN != p13.SNAPSHOT_SNAPSHOT_DOMAIN
+
+
+# --------------------------------------------------------------------------
+# G. Endurecimiento adversarial independiente
+# --------------------------------------------------------------------------
+
+
+def _independent_json_bytes(value) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, allow_nan=False, sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _independently_resign_document(document: dict) -> bytes:
+    for entry in document["entries"]:
+        payload = {
+            "as_of_date": entry["as_of_date"],
+            "opponent": entry["opponent"],
+            "player": entry["player"],
+            "result_fingerprint": entry["result_fingerprint"],
+        }
+        entry["entry_fingerprint"] = sha256(
+            b"tennis-persisted-tactical-recommendation-entry\x00"
+            + _independent_json_bytes(payload)
+        ).hexdigest().upper()
+    unsigned = {key: value for key, value in document.items() if key != "fingerprint"}
+    document["fingerprint"] = sha256(
+        b"tennis-persisted-tactical-recommendation-snapshot\x00"
+        + _independent_json_bytes(unsigned)
+    ).hexdigest().upper()
+    return _independent_json_bytes(document)
+
+
+def test_fingerprints_are_independently_recomputed_and_domain_separated(base_snapshot):
+    document = json.loads(
+        p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+    )
+    expected_domains = {
+        b"tennis-persisted-tactical-recommendation-entry\x00",
+        b"tennis-persisted-tactical-recommendation-snapshot\x00",
+    }
+    assert {p13.SNAPSHOT_ENTRY_DOMAIN, p13.SNAPSHOT_SNAPSHOT_DOMAIN} == expected_domains
+    upstream_domains = {
+        b"tennis-tactical-prioritization-result\x00",
+        b"tennis-public-tactical-recommendation\x00",
+        b"tennis-tactical-recommender-pipeline\x00",
+        b"tennis-tactical-feature-vector\x00",
+        b"tennis-tactical-player-profile\x00",
+        b"tennis-tactical-matchup-evidence\x00",
+    }
+    assert expected_domains.isdisjoint(upstream_domains)
+    for entry in document["entries"]:
+        payload = {
+            "as_of_date": entry["as_of_date"],
+            "opponent": entry["opponent"],
+            "player": entry["player"],
+            "result_fingerprint": entry["result_fingerprint"],
+        }
+        expected = sha256(
+            b"tennis-persisted-tactical-recommendation-entry\x00"
+            + _independent_json_bytes(payload)
+        ).hexdigest().upper()
+        assert entry["entry_fingerprint"] == expected
+    published = document.pop("fingerprint")
+    expected = sha256(
+        b"tennis-persisted-tactical-recommendation-snapshot\x00"
+        + _independent_json_bytes(document)
+    ).hexdigest().upper()
+    assert published == expected
+
+
+def test_resigned_semantically_invalid_payload_is_rejected(provider_path):
+    document = json.loads(provider_path.read_bytes())
+    document["entries"][0]["result"]["reason_codes"] = ["forged_reason"]
+    forged = provider_path.parent / "forged.json"
+    forged.write_bytes(_independently_resign_document(document))
+    with pytest.raises(p13.SnapshotUpstreamInvalidError):
+        p13.load_persisted_tactical_recommendation_snapshot(forged)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"\xef\xbb\xbf{}",
+        b"{} trailing",
+        b'{"x":1,"x":2}',
+        b'{"x":NaN}',
+        b'{"x":Infinity}',
+    ],
+)
+def test_load_rejects_hostile_json_envelopes(tmp_path, payload):
+    path = _write_snapshot(tmp_path, "hostile.json", payload)
+    with pytest.raises(p13.SnapshotMalformedError):
+        p13.load_persisted_tactical_recommendation_snapshot(path)
+
+
+def test_json_resource_limits_have_exact_boundaries(monkeypatch):
+    monkeypatch.setattr(p13, "MAX_JSON_STRING_LENGTH", 3)
+    monkeypatch.setattr(p13, "MAX_JSON_ARRAY_ITEMS", 2)
+    monkeypatch.setattr(p13, "MAX_JSON_OBJECT_KEYS", 2)
+    monkeypatch.setattr(p13, "MAX_JSON_INTEGER_ABS", 7)
+    monkeypatch.setattr(p13, "MAX_JSON_DEPTH", 2)
+    for accepted in ("abc", [1, 2], {"a": 1, "b": 2}, 7, -7, [[0]]):
+        p13._check_json_tree(accepted)
+    for rejected in ("abcd", [1, 2, 3], {"a": 1, "b": 2, "c": 3}, 8, -8, [[[0]]]):
+        with pytest.raises(p13.SnapshotMalformedError):
+            p13._check_json_tree(rejected)
+
+
+def test_serialization_enforces_byte_limit(base_snapshot, monkeypatch):
+    raw = p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+    monkeypatch.setattr(p13, "MAX_SNAPSHOT_BYTES", len(raw) - 1)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        "file:///private/snapshot.json",
+        "vscode://file/private/snapshot.json",
+        "../snapshot.json",
+        "safe/../snapshot.json",
+        "~/snapshot.json",
+        r"\\server\share\snapshot.json",
+        "//server/share/snapshot.json",
+        "snapshot.json\x00tail",
+    ],
+)
+def test_path_contract_rejects_uri_unc_home_traversal_and_nul(unsafe):
+    with pytest.raises(p13.SnapshotIncompatibleError):
+        p13.load_persisted_tactical_recommendation_snapshot(unsafe)
+
+
+def test_custom_pathlike_is_not_executed():
+    class HostilePath:
+        called = False
+
+        def __fspath__(self):
+            self.called = True
+            raise AssertionError("must not execute custom PathLike")
+
+    value = HostilePath()
+    with pytest.raises(p13.SnapshotIncompatibleError):
+        p13.load_persisted_tactical_recommendation_snapshot(value)
+    assert value.called is False
+
+
+def test_symlinked_parent_is_rejected_for_load_and_persist(base_snapshot, tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable on this platform")
+    destination = real / "snapshot.json"
+    p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, destination)
+    alias = linked / "snapshot.json"
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.load_persisted_tactical_recommendation_snapshot(alias)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, linked / "new.json")
+
+
+def test_post_replace_failure_does_not_claim_rollback(base_snapshot, tmp_path, monkeypatch):
+    destination = tmp_path / "snapshot.json"
+    destination.write_bytes(b"old")
+    real_replace = p13.os.replace
+
+    def replace_then_fail(source, target):
+        real_replace(source, target)
+        raise OSError("failure after commit point")
+
+    monkeypatch.setattr(p13.os, "replace", replace_then_fail)
+    with pytest.raises(p13.SnapshotUnavailableError):
+        p13.persist_persisted_tactical_recommendation_snapshot(base_snapshot, destination)
+    assert destination.read_bytes() == p13.serialize_persisted_tactical_recommendation_snapshot(base_snapshot)
+
+
+def test_provider_direct_construction_is_validated(base_snapshot):
+    with pytest.raises(p13.SnapshotIntegrityError):
+        p13.PersistedTacticalRecommendationProvider(snapshot=object())
+    provider = p13.PersistedTacticalRecommendationProvider(snapshot=base_snapshot)
+    assert provider.snapshot is base_snapshot
+
+
+def test_provider_revalidates_exact_query_object(provider_path):
+    provider = p13.create_persisted_tactical_recommendation_provider(provider_path)
+    query = _valid_query(_PLAYER, _OPPONENT, AS_OF_DATE)
+    object.__setattr__(query, "player_id", 1)
+    with pytest.raises(InvalidRequestError) as captured:
+        provider.fetch_tactical_prioritization(query)
+    assert captured.value.args == ()
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_public_error_boundary_discards_sensitive_exception_chain(monkeypatch):
+    class ManipulatedSnapshotError(p13.SnapshotUnavailableError):
+        pass
+
+    def fail(_path):
+        try:
+            raise OSError("C:\\PRIVATE\\secret /home/private file:///secret")
+        except OSError as original:
+            raise ManipulatedSnapshotError() from original
+
+    monkeypatch.setattr(p13, "load_persisted_tactical_recommendation_snapshot", fail)
+    with pytest.raises(InternalServiceError) as captured:
+        p13.create_persisted_tactical_recommendation_provider("snapshot.json")
+    error = captured.value
+    assert error.args == ()
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert "secret" not in repr(error).casefold()
+
+
+def test_concurrent_lookups_return_exact_cached_objects(provider_path):
+    provider = p13.create_persisted_tactical_recommendation_provider(provider_path)
+    queries = tuple(
+        _valid_query(entry.key.player, entry.key.opponent, entry.key.as_of_date)
+        for entry in provider.snapshot.entries
+    )
+    expected = {
+        (query.player_id, query.opponent_id, query.as_of_date):
+        provider.fetch_tactical_prioritization(query)
+        for query in queries
+    }
+
+    def fetch(index):
+        query = queries[index % len(queries)]
+        result = provider.fetch_tactical_prioritization(query)
+        return result is expected[(query.player_id, query.opponent_id, query.as_of_date)]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+        assert all(pool.map(fetch, range(600)))
+
+
+def test_two_persisted_identities_produce_identical_public_wire_bytes(tmp_path):
+    results = (
+        _prioritization("available", 0, AS_OF_DATE, False, player=_PLAYER, opponent=_OPPONENT),
+        _prioritization("available", 0, AS_OF_DATE, False, player=_PLAYER_B, opponent=_OPPONENT_B),
+    )
+    client = _api_client_from_snapshot(
+        p13.build_persisted_tactical_recommendation_snapshot(results), tmp_path
+    )
+    payloads = []
+    for player, opponent in ((_PLAYER, _OPPONENT), (_PLAYER_B, _OPPONENT_B)):
+        response = client.post(
+            _POST_PATH,
+            json={"player_id": player, "opponent_id": opponent, "as_of_date": AS_OF_DATE.isoformat()},
+        )
+        assert response.status_code == 200
+        payloads.append(response.content)
+    assert payloads[0] == payloads[1]
+
+
+def test_provider_lookup_ast_contains_no_serialization_or_fingerprint_calls():
+    tree = _module_tree()
+    provider = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PersistedTacticalRecommendationProvider"
+    )
+    forbidden = {"json", "dumps", "loads", "sha256", "serialize", "fingerprint", "load", "persist"}
+    called = set()
+    for node in ast.walk(provider):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                called.add(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                called.add(node.func.attr)
+    assert called.isdisjoint(forbidden)
