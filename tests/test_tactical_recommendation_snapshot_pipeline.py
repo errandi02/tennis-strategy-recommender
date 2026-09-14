@@ -1,16 +1,18 @@
 """P15: orquestador offline P10 -> records -> P14 -> P13 (P16).
 
-Cubre: autorizacion de ejecucion real (habilitada en ``True`` para un
-intento manual unico, sin reintento automatico y con metadata
-contractual de razon/politica/cierre), contrato de rutas privadas,
-flujo autorizado simulado solo con ejecuciones sinteticas inyectadas
-(nunca la fuente real), proyeccion target -> record, sellado P10,
-fallos e interrupciones, performance log cerrado sin PII, invariantes
-de arquitectura por AST y equivalencia con la generacion P14 directa.
-Cero ejecucion real: los tests inyectan runners/fixtures sinteticos y
-solo habilitan la puerta con monkeypatch temporalmente; por defecto
-``REAL_EXECUTION_AUTHORIZED`` esta en ``False`` (revision de capacidad
-P13 pendiente). Ningun test invoca al lector real de la fuente.
+Cubre: autorizacion de ejecucion real (habilitada en ``True`` para
+exactamente una ejecucion manual unica, sin reintento automatico y
+con metadata contractual de razon/politica/cierre), contrato de rutas
+privadas, flujo autorizado simulado solo con ejecuciones sinteticas
+inyectadas (nunca la fuente real), proyeccion target -> record,
+sellado P10, fallos e interrupciones, performance log cerrado sin
+PII, invariantes de arquitectura por AST y equivalencia con la
+generacion P14 directa. Cero ejecucion real: por defecto
+``REAL_EXECUTION_AUTHORIZED`` esta en ``True`` (autorizacion P16 para
+una unica ejecucion manual) y ningun test ejecuta la ruta real: todo
+flujo prueba usa runners/generadores sinteticos inyectados, y los
+tests de puerta la cierran con monkeypatch temporal. Ningun test
+invoca al lector real de la fuente.
 """
 
 from __future__ import annotations
@@ -140,35 +142,33 @@ def _clone(source, **overrides) -> object:
 # --------------------------------------------------------------------- #
 
 
-def test_p15_bloqueado_por_revision_de_capacidad():
-    assert p15.REAL_EXECUTION_AUTHORIZED is False
-    assert p15.REAL_EXECUTION_BLOCK_REASON_CODE == (
-        "real_snapshot_generation_blocked_pending_capacity_validation"
-    )
+def test_p15_autorizado_para_unica_ejecucion_manual():
+    # P16: capacidad P13 validada; unica puerta en True con la razon
+    # activa exacta para una unica ejecucion manual privada.
+    assert p15.REAL_EXECUTION_AUTHORIZED is True
     assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
-        "real_snapshot_generation_blocked_pending_capacity_validation"
-    )
-    assert (
-        not p15.REAL_EXECUTION_AUTHORIZED
-        and "authorized_after_preflight"
-        not in p15.REAL_EXECUTION_AUTHORIZATION_REASON
+        "single_manual_private_snapshot_generation_authorized_after_preflight"
     )
     assert p15.AUTOMATIC_RETRY is False
     assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (
         "single_manual_execution_without_automatic_retry"
     )
+    # Todavia no se ha realizado ninguna ejecucion real.
     assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 0
     assert p15.COMPLETED_REAL_EXECUTIONS == 0
     assert p15.INTERRUPTED_REAL_EXECUTIONS == 0
     assert p15.AUTOMATIC_RETRIES_PERFORMED == 0
-    assert isinstance(p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON, str)
-    assert p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
+    # Cierre contractual obligatorio tras la ejecucion eventual.
+    assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
+    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
+    # El codigo de bloqueo se conserva en el conjunto cerrado: la
+    # puerta sigue cerrandose si la constante vuelve a False.
     assert p15.REAL_EXECUTION_BLOCK_REASON_CODE in p15.PIPELINE_REASON_CODES
     assert (
         "real_snapshot_generation_not_authorized" not in p15.PIPELINE_REASON_CODES
     )
-    assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
-    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
+    assert isinstance(p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON, str)
+    assert p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
 
 
 def test_p10_permanece_bloqueado_historicamente():
@@ -222,11 +222,21 @@ def test_cli_bloqueada_sin_io_y_sin_bypass_por_ambiente(
 
 
 def test_ambiente_no_altera_la_autorizacion(
-    external_dir, p10_mini_result, monkeypatch
+    authorized, external_dir, p10_mini_result, monkeypatch
 ):
-    for variable in ("P15_REAL_EXECUTION", "ALLOW_REAL", "TENNIS_REAL"):
+    variables = ("P15_REAL_EXECUTION", "ALLOW_REAL", "TENNIS_REAL")
+    # La puerta esta abierta por la unica constante: el entorno no
+    # añade ni quita rutas (la ejecucion simulada corre con el entorno
+    # en False, como con el entorno en True).
+    for variable in variables:
+        monkeypatch.setenv(variable, "false")
+    result = _run(external_dir, p10_runner=lambda: p10_mini_result)
+    assert result.execution_status == "completed"
+    # El entorno tampoco puede cerrar la puerta: cerrada
+    # artificialmente, sigue bloqueada con el codigo cerrado.
+    monkeypatch.setattr(p15, "REAL_EXECUTION_AUTHORIZED", False)
+    for variable in variables:
         monkeypatch.setenv(variable, "true")
-    # La puerta esta cerrada por capacidad: el entorno no la abre.
     with pytest.raises(
         p15.TacticalRecommendationSnapshotPipelineError
     ) as exc_info:
@@ -234,14 +244,6 @@ def test_ambiente_no_altera_la_autorizacion(
     assert (
         exc_info.value.reason_code == p15.REAL_EXECUTION_BLOCK_REASON_CODE
     )
-    assert list(external_dir.iterdir()) == []
-    snapshot_raw, log_raw = _raw_paths(external_dir)
-    with pytest.raises(SystemExit) as exc_info:
-        p15.main(
-            ["--snapshot-path", snapshot_raw, "--performance-log", log_raw]
-        )
-    assert exc_info.value.code == p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
-    assert list(external_dir.iterdir()) == []
 
 
 def test_cli_rechaza_fuente_alternativa(authorized, external_dir):
@@ -328,7 +330,7 @@ def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
     assert exc_info.value.code == 2
 
 
-def test_ast_autorizacion_unica_constante_false_sin_ambiente():
+def test_ast_autorizacion_unica_constante_true_sin_ambiente():
     tree = ast.parse(_MODULE_SOURCE)
     assignments = []
     for node in ast.walk(tree):
@@ -346,8 +348,9 @@ def test_ast_autorizacion_unica_constante_false_sin_ambiente():
                     assignments.append(node)
     assert len(assignments) == 1
     value = assignments[0].value
-    # P16: la puerta esta cerrada mientras se valida la capacidad P13.
-    assert isinstance(value, ast.Constant) and value.value is False
+    # P16: capacidad validada; unica puerta en True para una unica
+    # ejecucion manual, sin acceso a variables de entorno.
+    assert isinstance(value, ast.Constant) and value.value is True
     environment = [
         node
         for node in ast.walk(tree)

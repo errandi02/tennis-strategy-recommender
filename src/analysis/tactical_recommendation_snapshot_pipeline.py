@@ -6,13 +6,10 @@ Prepara la integracion offline completa sin ejecutar datos reales:
         -> generador P14 -> snapshot privado P13 -> (futuro) provider P13
         -> servicio/API P12
 
-P16 habilito ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para un intento
-manual; la revision de capacidad P13 (``MAX_SNAPSHOT_BYTES``) bloquea
-de nuevo la ruta antes de ejecutar: la constante vuelve a ``False`` y
-el reason code de bloqueo es
-``real_snapshot_generation_blocked_pending_capacity_validation``.
-No queda ninguna ruta real ejecutable mientras se revisa y valida la
-capacidad del snapshot P13. La politica permanece
+P16 valido la capacidad del snapshot P13 (``MAX_SNAPSHOT_BYTES`` =
+256 MiB con la base representativa de 3.610 entradas cubierta con
+margen) y habilito ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para
+exactamente una ejecucion manual privada. La politica permanece
 ``single_manual_execution_without_automatic_retry`` y
 ``AUTOMATIC_RETRY`` en ``False``. Tras la ejecucion eventual
 (completada, fallida o interrumpida), un commit posterior debera fijar
@@ -84,15 +81,17 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# Autorizacion unica y manual. Cerrada temporalmente por la revision
-# de capacidad P13: la estimacion de snapshot (3.610 entradas)
-# superaba el limite historico MAX_SNAPSHOT_BYTES; la ruta real no es
-# ejecutable hasta que la capacidad sea validada y re-autorizada
-# manualmente. No existe bypass por entorno, flag CLI, reintento ni
-# segunda constante.
-REAL_EXECUTION_AUTHORIZED: Final = False
+# Autorizacion unica y manual: habilitada para exactamente una
+# ejecucion real privada, tras la validacion de capacidad P13
+# (MAX_SNAPSHOT_BYTES = 256 MiB; base representativa de 3.610
+# entradas cubierta con margen; constantes de capacidad documentadas
+# en el modulo P13). Tras la ejecucion (completada, fallida o
+# interrumpida) un commit posterior debe fijar la constante en False.
+# No existe bypass por entorno, flag CLI, reintento ni segunda
+# constante.
+REAL_EXECUTION_AUTHORIZED: Final = True
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
-    "real_snapshot_generation_blocked_pending_capacity_validation"
+    "single_manual_private_snapshot_generation_authorized_after_preflight"
 )
 REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
     "real_snapshot_generation_blocked_pending_capacity_validation"
