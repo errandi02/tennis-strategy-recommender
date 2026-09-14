@@ -6,9 +6,16 @@ Prepara la integracion offline completa sin ejecutar datos reales:
         -> generador P14 -> snapshot privado P13 -> (futuro) provider P13
         -> servicio/API P12
 
-``REAL_EXECUTION_AUTHORIZED`` permanece en ``False``; esta capa nunca
-lee Parquet/CSV, nunca accede a ``data/``, nunca escribe en el
-repositorio y nunca genera el snapshot real. La autorizacion de la
+P16 habilita ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para exactamente
+un intento manual: la razon contractual es
+``single_manual_private_snapshot_generation_authorized_after_preflight``,
+``AUTOMATIC_RETRY`` es ``False`` y la politica es
+``single_manual_execution_without_automatic_retry``. Tras la ejecucion
+(completada, fallida o interrumpida), un commit posterior debera fijar
+``REAL_EXECUTION_AUTHORIZED = False``; el proceso no edita su propia
+constante. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
+accede a ``data/``, nunca escribe en el repositorio y no genera el
+snapshot real. La autorizacion de la
 generacion del snapshot la posee exclusivamente P15. La ruta
 productiva reutiliza sin modificar: ``compute_tactical_pipeline_result``
 P10 (frontera compute-only: lectura contractual unica, sin
@@ -73,9 +80,30 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# Autorizacion unico y manual. No existe bypass por entorno, flag CLI,
-# reintento ni segunda constante.
-REAL_EXECUTION_AUTHORIZED: Final = False
+# Autorizacion unica y manual (habilitada por P16). No existe bypass
+# por entorno, flag CLI, reintento ni segunda constante. Cubre
+# exactamente un intento manual: si falla o se interrumpe, no se
+# repite sin nueva decision humana.
+REAL_EXECUTION_AUTHORIZED: Final = True
+REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
+    "single_manual_private_snapshot_generation_authorized_after_preflight"
+)
+AUTOMATIC_RETRY: Final = False
+SINGLE_MANUAL_EXECUTION_POLICY: Final = (
+    "single_manual_execution_without_automatic_retry"
+)
+# Historial real P15 (invariante contractual en el momento de P16).
+PREVIOUS_REAL_P15_ATTEMPTS: Final = 0
+COMPLETED_REAL_EXECUTIONS: Final = 0
+INTERRUPTED_REAL_EXECUTIONS: Final = 0
+AUTOMATIC_RETRIES_PERFORMED: Final = 0
+POST_EXECUTION_CLOSURE_RULE: Final = (
+    "Tras la ejecucion autorizada (completada, fallida o interrumpida), "
+    "un commit posterior debe fijar REAL_EXECUTION_AUTHORIZED = False; "
+    "P10 conserva permanentemente REAL_EXECUTION_AUTHORIZED = False y "
+    "FURTHER_REAL_EXECUTION_AUTHORIZED = False. El proceso no edita su "
+    "propia constante; cero reintento automatico."
+)
 REAL_SNAPSHOT_EXECUTION_BLOCK_REASON: Final = (
     "Ejecucion real no autorizada: REAL_EXECUTION_AUTHORIZED=P15 debe "
     "habilitarse manualmente antes de generar el snapshot privado."
@@ -1082,7 +1110,8 @@ def validate_snapshot_pipeline_paths_cli(
 def main(argv: tuple[str, ...] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Preflight P15: snapshot privado offline (bloqueado por defecto)."
+            "P15: unica ejecucion manual autorizada del snapshot "
+            "privado offline (un solo intento, sin reintento)."
         )
     )
     parser.add_argument("--snapshot-path", required=True)
@@ -1113,6 +1142,10 @@ if __name__ == "__main__":
 
 
 __all__ = (
+    "AUTOMATIC_RETRY",
+    "AUTOMATIC_RETRIES_PERFORMED",
+    "COMPLETED_REAL_EXECUTIONS",
+    "INTERRUPTED_REAL_EXECUTIONS",
     "PIPELINE_ANALYSIS_NAME",
     "PIPELINE_CONTRACT_NAME",
     "PIPELINE_EXECUTION_STATUSES",
@@ -1121,8 +1154,12 @@ __all__ = (
     "PIPELINE_RECONCILIATION_KEYS",
     "PIPELINE_SCHEMA_VERSION",
     "PIPELINE_STAGES",
+    "POST_EXECUTION_CLOSURE_RULE",
+    "PREVIOUS_REAL_P15_ATTEMPTS",
     "REAL_EXECUTION_AUTHORIZED",
+    "REAL_EXECUTION_AUTHORIZATION_REASON",
     "REAL_SNAPSHOT_EXECUTION_BLOCK_REASON",
+    "SINGLE_MANUAL_EXECUTION_POLICY",
     "TacticalRecommendationSnapshotPipelineError",
     "TacticalRecommendationSnapshotPipelineResult",
     "main",

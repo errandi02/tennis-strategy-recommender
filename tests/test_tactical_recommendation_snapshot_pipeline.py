@@ -1,12 +1,16 @@
-"""P15 preflight: orquestador offline P10 -> records -> P14 -> P13.
+"""P15: orquestador offline P10 -> records -> P14 -> P13 (P16).
 
-Cubre: autorizacion de ejecucion real (bloqueada por defecto), contrato
-de rutas privadas, flujo autorizado simulado solo con ejecuciones
-sinteticas inyectadas (nunca la fuente real), proyeccion target ->
-record, sellado P10, fallos e interrupciones, performance log cerrado
-sin PII, invariants de arquitectura por AST y equivalencia con la
-generacion P14 directa. Cero ejecucion real: `REAL_EXECUTION_AUTHORIZED`
-se habilita en tests unicamente con monkeypatch y runners inyectados.
+Cubre: autorizacion de ejecucion real (habilitada en ``True`` para un
+intento manual unico, sin reintento automatico y con metadata
+contractual de razon/politica/cierre), contrato de rutas privadas,
+flujo autorizado simulado solo con ejecuciones sinteticas inyectadas
+(nunca la fuente real), proyeccion target -> record, sellado P10,
+fallos e interrupciones, performance log cerrado sin PII, invariantes
+de arquitectura por AST y equivalencia con la generacion P14 directa.
+Cero ejecucion real: todos los tests inyectan runners/fixtures
+sinteticos; el comportamiento bloqueado se verifica con monkeypatch
+de ``REAL_EXECUTION_AUTHORIZED`` a ``False``. Ningun test invoca al
+lector real de la fuente.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import os
 from datetime import date
 from pathlib import Path
 
@@ -135,13 +140,34 @@ def _clone(source, **overrides) -> object:
 # --------------------------------------------------------------------- #
 
 
-def test_constante_de_autorizacion_es_falsa():
-    assert p15.REAL_EXECUTION_AUTHORIZED is False
+def test_autorizacion_p16_es_unica_constante_true():
+    assert p15.REAL_EXECUTION_AUTHORIZED is True
+    assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
+        "single_manual_private_snapshot_generation_authorized_after_preflight"
+    )
+    assert p15.AUTOMATIC_RETRY is False
+    assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (
+        "single_manual_execution_without_automatic_retry"
+    )
+    assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 0
+    assert p15.COMPLETED_REAL_EXECUTIONS == 0
+    assert p15.INTERRUPTED_REAL_EXECUTIONS == 0
+    assert p15.AUTOMATIC_RETRIES_PERFORMED == 0
     assert isinstance(p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON, str)
     assert p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
+    assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
+    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
 
 
-def test_runner_bloqueado_lanza_preflight_sin_efectos(external_dir):
+def test_p10_permanece_bloqueado_historicamente():
+    assert p10.REAL_EXECUTION_AUTHORIZED is False
+    assert p10.FURTHER_REAL_EXECUTION_AUTHORIZED is False
+
+
+def test_runner_bloqueado_lanza_preflight_sin_efectos(
+    external_dir, monkeypatch
+):
+    monkeypatch.setattr(p15, "REAL_EXECUTION_AUTHORIZED", False)
     with pytest.raises(
         p15.TacticalRecommendationSnapshotPipelineError
     ) as exc_info:
@@ -153,7 +179,8 @@ def test_runner_bloqueado_lanza_preflight_sin_efectos(external_dir):
     assert list(external_dir.iterdir()) == []
 
 
-def test_bloqueo_previo_a_lectores_y_generador(external_dir):
+def test_bloqueo_previo_a_lectores_y_generador(external_dir, monkeypatch):
+    monkeypatch.setattr(p15, "REAL_EXECUTION_AUTHORIZED", False)
     p10_spy = _Spy(None)
     generator_spy = _Spy(None)
     with pytest.raises(p15.TacticalRecommendationSnapshotPipelineError):
@@ -169,6 +196,7 @@ def test_bloqueo_previo_a_lectores_y_generador(external_dir):
 def test_cli_bloqueada_sin_io_y_sin_bypass_por_ambiente(
     external_dir, monkeypatch
 ):
+    monkeypatch.setattr(p15, "REAL_EXECUTION_AUTHORIZED", False)
     snapshot_raw, log_raw = _raw_paths(external_dir)
     for variable in ("P15_REAL_EXECUTION", "ALLOW_REAL", "TENNIS_REAL"):
         monkeypatch.setenv(variable, "true")
@@ -178,6 +206,94 @@ def test_cli_bloqueada_sin_io_y_sin_bypass_por_ambiente(
         )
     assert exc_info.value.code == p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
     assert list(external_dir.iterdir()) == []
+
+
+def test_ambiente_no_altera_la_autorizacion(
+    authorized, external_dir, p10_mini_result, monkeypatch
+):
+    for variable in ("P15_REAL_EXECUTION", "ALLOW_REAL", "TENNIS_REAL"):
+        monkeypatch.setenv(variable, "true")
+    assert p15.REAL_EXECUTION_AUTHORIZED is True
+    base = external_dir / "cli"
+    base.mkdir()
+    snapshot_raw, log_raw = _raw_paths(base)
+    completed = _run(base, p10_runner=lambda: p10_mini_result)
+    assert completed.execution_status == "completed"
+    # Con la puerta forzada a False, el entorno no la re-habilita.
+    monkeypatch.setattr(p15, "REAL_EXECUTION_AUTHORIZED", False)
+    with pytest.raises(SystemExit) as exc_info:
+        p15.main(
+            ["--snapshot-path", snapshot_raw, "--performance-log", log_raw]
+        )
+    assert exc_info.value.code == p15.REAL_SNAPSHOT_EXECUTION_BLOCK_REASON
+
+
+def test_cli_rechaza_fuente_alternativa(authorized, external_dir):
+    snapshot_raw, log_raw = _raw_paths(external_dir)
+    for extra in (
+        ("--source", "/tmp/otra-fuente.parquet"),
+        ("--points", str(p10.POINTS_PATH)),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            p15.main(
+                [
+                    "--snapshot-path",
+                    snapshot_raw,
+                    "--performance-log",
+                    log_raw,
+                    extra[0],
+                    extra[1],
+                ]
+            )
+        assert exc_info.value.code == 2
+
+
+def test_cli_valida_rutas_antes_de_llegar_a_ejecutar(
+    authorized, external_dir, monkeypatch
+):
+    called: list = []
+    (external_dir / "ya-existente.json").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        p15,
+        "run_tactical_recommendation_snapshot_pipeline",
+        lambda _s, _l: called.append(1),
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        p15.main(
+            [
+                "--snapshot-path",
+                str(external_dir / "ya-existente.json"),
+                "--performance-log",
+                str(external_dir / "private-performance.json"),
+            ]
+        )
+    assert (
+        exc_info.value.code
+        == p15._ERROR_MESSAGES["path_contract_violation"]
+    )
+    assert called == []
+
+
+_SNAPSHOT_FINAL = (
+    "/Users/omar.errandi/Documents/tactical-recommendations-private-v1.json"
+)
+_LOG_FINAL = "/Users/omar.errandi/Documents/p16-snapshot-performance.json"
+
+
+def test_rutas_definitivas_cuentan_con_el_contrato_p15():
+    assert p15._is_posix_private_path(_SNAPSHOT_FINAL)
+    assert p15._is_posix_private_path(_LOG_FINAL)
+    documents = Path(_SNAPSHOT_FINAL).parent
+    if not documents.is_dir():
+        pytest.skip("el destino definitivo no existe en esta maquina")
+    snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
+        _SNAPSHOT_FINAL, _LOG_FINAL
+    )
+    assert snapshot == Path(_SNAPSHOT_FINAL)
+    assert log == Path(_LOG_FINAL)
+    assert not Path(_SNAPSHOT_FINAL).exists()
+    assert not Path(_LOG_FINAL).exists()
+    assert os.access(documents, os.W_OK | os.X_OK)
 
 
 def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
@@ -196,7 +312,7 @@ def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
     assert exc_info.value.code == 2
 
 
-def test_ast_autorizacion_unica_constante_falsa_sin_ambiente():
+def test_ast_autorizacion_unica_constante_true_sin_ambiente():
     tree = ast.parse(_MODULE_SOURCE)
     assignments = []
     for node in ast.walk(tree):
@@ -214,7 +330,7 @@ def test_ast_autorizacion_unica_constante_falsa_sin_ambiente():
                     assignments.append(node)
     assert len(assignments) == 1
     value = assignments[0].value
-    assert isinstance(value, ast.Constant) and value.value is False
+    assert isinstance(value, ast.Constant) and value.value is True
     environment = [
         node
         for node in ast.walk(tree)
@@ -1633,6 +1749,92 @@ def test_ast_no_llamadas_a_nivel_de_modulo():
                 ast.Expr,
             ),
         )
+
+
+def test_ast_sin_ejecucion_automatica_ni_reintento():
+    tree = ast.parse(_MODULE_SOURCE)
+    execution_names = {
+        "run_tactical_recommendation_snapshot_pipeline",
+        "main",
+        "compute_tactical_pipeline_result",
+    }
+    retry_sites = []
+    for loop in ast.walk(tree):
+        if not isinstance(loop, (ast.For, ast.While)):
+            continue
+        for sub in ast.walk(loop):
+            if not isinstance(sub, ast.Call) or sub is loop:
+                continue
+            name = None
+            if isinstance(sub.func, ast.Name):
+                name = sub.func.id
+            elif isinstance(sub.func, ast.Attribute):
+                name = sub.func.attr
+            if name in execution_names:
+                retry_sites.append((loop.lineno, name))
+    assert retry_sites == []
+    assert [n for n in ast.walk(tree) if isinstance(n, ast.While)] == []
+
+
+def test_main_no_se_invoca_al_importar():
+    tree = ast.parse(_MODULE_SOURCE)
+    main_calls = []
+    for statement in tree.body:
+        if isinstance(statement, ast.If):
+            test = statement.test
+            is_guard = (
+                isinstance(test, ast.Compare)
+                and isinstance(test.left, ast.Name)
+                and test.left.id == "__name__"
+                and len(test.ops) == 1
+                and isinstance(test.ops[0], ast.Eq)
+            )
+            if not is_guard:
+                continue
+            for sub in ast.walk(statement):
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id == "main"
+                ):
+                    main_calls.append(sub)
+        if (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Call)
+            and isinstance(statement.value.func, ast.Name)
+            and statement.value.func.id == "main"
+        ):
+            pytest.fail("main() se invoca al importar")
+    assert len(main_calls) == 1
+
+
+def test_ningun_test_invoca_al_lector_real():
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    reader_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"read_parquet", "read_csv"}
+            )
+            or (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"read_parquet", "read_csv"}
+            )
+        )
+    ]
+    assert reader_calls == []
+    p10_attributes = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "p10"
+    }
+    assert not (p10_attributes & {"read_parquet", "_read_source_points_once"})
 
 
 # --------------------------------------------------------------------- #
