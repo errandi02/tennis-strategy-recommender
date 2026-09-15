@@ -6,6 +6,25 @@ TFM de Omar Errandi para construir un recomendador explicable de estrategias de 
 
 Proyecto en fase de inicialización.
 
+## API local (P17)
+
+Arranque local productivo de la API P12 sobre el snapshot privado P13
+ya generado por el flujo manual P15/P16 (bucle local only, un worker,
+sin reload, una sola carga del snapshot). La ruta del snapshot es
+configuración obligatoria por arranque y debe vivir fuera del
+repositorio; nunca se documenta aquí (comando genérico):
+
+```bash
+python -m src.api.runtime \
+  --snapshot-path /ruta/externa/a/snapshot-privado-p13.json \
+  [--host 127.0.0.1] [--port 8000]
+```
+
+Salidas: `0` servidor terminado; `1` snapshot ausente/invalido/
+incompatible o servidor no iniciable (mensaje cerrado); `2` error de
+uso del CLI. Endpoints: `GET /healthz` y
+`POST /api/v1/recommendations`.
+
 ## Primer hito
 
 Demostrar empíricamente la viabilidad del Match Charting Project:
