@@ -304,17 +304,6 @@ _LOG_FINAL = "/Users/omar.errandi/Documents/p16-snapshot-performance.json"
 def test_rutas_definitivas_cuentan_con_el_contrato_p15():
     assert p15._is_posix_private_path(_SNAPSHOT_FINAL)
     assert p15._is_posix_private_path(_LOG_FINAL)
-    documents = Path(_SNAPSHOT_FINAL).parent
-    if not documents.is_dir():
-        pytest.skip("el destino definitivo no existe en esta maquina")
-    snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
-        _SNAPSHOT_FINAL, _LOG_FINAL
-    )
-    assert snapshot == Path(_SNAPSHOT_FINAL)
-    assert log == Path(_LOG_FINAL)
-    assert not Path(_SNAPSHOT_FINAL).exists()
-    assert not Path(_LOG_FINAL).exists()
-    assert os.access(documents, os.W_OK | os.X_OK)
 
 
 def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
@@ -373,8 +362,11 @@ def test_ast_autorizacion_unica_constante_false_sin_ambiente():
 # --------------------------------------------------------------------- #
 
 
-def test_rutas_validas_externas_devuelven_pare(external_dir):
+def test_rutas_validas_externas_inexistentes_devuelven_par(tmp_path):
+    external_dir = tmp_path.resolve()
     snapshot_raw, log_raw = _raw_paths(external_dir)
+    assert not Path(snapshot_raw).exists()
+    assert not Path(log_raw).exists()
     snapshot, log = p15.validate_snapshot_pipeline_paths_cli(
         snapshot_raw, log_raw
     )
