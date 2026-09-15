@@ -3,7 +3,7 @@
 Frontera de arranque explícita para servir ``create_app(provider)`` de P12
 sobre el snapshot privado P13 ya generado por el flujo manual P15/P16:
 
-    --snapshot-path <ruta externa obligatoria>
+    TENNIS_TACTICAL_SNAPSHOT_PATH=<ruta externa obligatoria>
       -> validacion de ruta cerrada (pre-check sin I/O)
       -> P13 carga y verifica el snapshot EXACTAMENTE UNA VEZ
       -> create_app(provider) de P12
@@ -11,10 +11,11 @@ sobre el snapshot privado P13 ya generado por el flujo manual P15/P16:
 
 Contrato cerrado del modulo:
 
-- La ruta del snapshot es configuracion OBLIGATORIA: no existe ruta
-  por defecto, no se imprime, no se registra en logs, no se expone en
-  ``app.state``, OpenAPI ni respuestas, y no se hardcodea ninguna ruta
-  real.
+- La ruta del snapshot es configuracion OBLIGATORIA mediante la unica
+  variable dedicada ``TENNIS_TACTICAL_SNAPSHOT_PATH``: no existe ruta
+  por defecto ni flag que la copie a ``argv``; no se imprime, no se
+  registra en logs, no se expone en ``app.state``, OpenAPI ni
+  respuestas, y no se hardcodea ninguna ruta real.
 - Sin I/O al importar el modulo: no se lee ningun snapshot, no se
   conecta ninguna red y no se instancia ningun provider hasta que una
   llamada explícita lo haga.
@@ -29,7 +30,9 @@ Contrato cerrado del modulo:
   cerrado, sin traceback, sin exception chaining y sin rutas,
   identidades ni contenido del snapshot. Los errores de uso del CLI
   producen salida 2 con un mensaje cerrado, sin repetir argumentos, y
-  sin cargar nada. Una interrupcion devuelve 130 sin traceback.
+  sin cargar nada. SIGTERM/SIGINT recibidos mientras Uvicorn sirve se
+  normalizan despues de su apagado ordenado a salida 0 sin traceback;
+  un ``KeyboardInterrupt`` fuera de esa frontera devuelve 130.
 - Uvicorn: host fijo ``127.0.0.1``, puerto decimal estricto
   ``1..65535``, ``workers=1`` inmutable (no existe flag ``--workers``),
   ``reload=False`` inmutable (no existe flag ``--reload``), logging
@@ -42,12 +45,15 @@ Contrato cerrado del modulo:
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import signal
+from contextlib import contextmanager
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final
+from types import FrameType
+from typing import Final, Iterator
 
-import uvicorn
 from fastapi import FastAPI
 
 from src.api.app import create_app
@@ -61,6 +67,7 @@ RUNTIME_MIN_PORT: Final = 1
 RUNTIME_MAX_PORT: Final = 65535
 RUNTIME_WORKERS: Final = 1
 RUNTIME_RELOAD: Final = False
+RUNTIME_SNAPSHOT_PATH_ENV: Final = "TENNIS_TACTICAL_SNAPSHOT_PATH"
 
 # Mismo criterio de ruta absoluta que el contrato P13 (POSIX, unidad
 # Windows, UNC); sin divergencia.
@@ -96,6 +103,12 @@ class RuntimePathContractError(RuntimeError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class _ManagedServerSignal(BaseException):
+    """Senal de apagado ya gestionada por Uvicorn, sin datos sensibles."""
+
+    __slots__ = ()
 
 
 class _ClosedArgumentParser(argparse.ArgumentParser):
@@ -152,6 +165,52 @@ def _closed_logging_config() -> dict[str, object]:
             },
         },
     }
+
+
+def _raise_managed_server_signal(
+    signum: int,
+    frame: FrameType | None,
+) -> None:
+    """Convierte la reemision de Uvicorn en una salida normal cerrada."""
+    del signum, frame
+    raise _ManagedServerSignal
+
+
+@contextmanager
+def _normalize_server_signals() -> Iterator[None]:
+    """Normaliza SIGTERM/SIGINT que Uvicorn reemite tras cerrar.
+
+    Uvicorn conserva estos handlers, instala los suyos mientras sirve,
+    restaura los nuestros tras el apagado ordenado y reemite las
+    senales capturadas. La excepcion privada impide que el handler por
+    defecto termine el proceso con 128+senal; ``main`` la transforma
+    en salida 0. Los handlers originales siempre se restauran.
+    """
+    managed = (signal.SIGTERM, signal.SIGINT)
+    originals: dict[signal.Signals, object] = {}
+    try:
+        for managed_signal in managed:
+            originals[managed_signal] = signal.getsignal(managed_signal)
+            signal.signal(managed_signal, _raise_managed_server_signal)
+        yield
+    finally:
+        for managed_signal, original in originals.items():
+            signal.signal(managed_signal, original)
+
+
+def _serve_app(app: FastAPI, host: str, port: int) -> None:
+    """Importa Uvicorn solo al servir y mantiene su contrato cerrado."""
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        workers=RUNTIME_WORKERS,
+        reload=RUNTIME_RELOAD,
+        access_log=False,
+        log_config=_closed_logging_config(),
+    )
 
 
 def _route_raw_text(value: object) -> str:
@@ -231,11 +290,6 @@ def _parse_cli(argv: Sequence[str] | None) -> tuple[str, str, int]:
         ),
     )
     parser.add_argument(
-        "--snapshot-path",
-        required=True,
-        help="Ruta absoluta externa (fuera del repositorio) del snapshot P13.",
-    )
-    parser.add_argument(
         "--host",
         default=RUNTIME_DEFAULT_HOST,
         type=_strict_host,
@@ -248,7 +302,10 @@ def _parse_cli(argv: Sequence[str] | None) -> tuple[str, str, int]:
         help=f"Entero decimal estricto {RUNTIME_MIN_PORT}-{RUNTIME_MAX_PORT}.",
     )
     arguments = parser.parse_args(argv)
-    return arguments.snapshot_path, arguments.host, arguments.port
+    raw = os.environ.get(RUNTIME_SNAPSHOT_PATH_ENV)
+    if type(raw) is not str or not raw:
+        parser.error("snapshot environment missing")
+    return raw, arguments.host, arguments.port
 
 
 def build_app_from_snapshot(snapshot_path: object) -> FastAPI:
@@ -285,15 +342,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception:
         raise SystemExit(_RUNTIME_MESSAGES["snapshot_load_failed"]) from None
     try:
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            workers=RUNTIME_WORKERS,
-            reload=RUNTIME_RELOAD,
-            access_log=False,
-            log_config=_closed_logging_config(),
-        )
+        with _normalize_server_signals():
+            _serve_app(app, host, port)
+    except _ManagedServerSignal:
+        return 0
     except KeyboardInterrupt:
         return 130
     except Exception:
@@ -312,6 +364,7 @@ __all__ = (
     "RUNTIME_MIN_PORT",
     "RUNTIME_NAME",
     "RUNTIME_RELOAD",
+    "RUNTIME_SNAPSHOT_PATH_ENV",
     "RUNTIME_WORKERS",
     "RuntimePathContractError",
     "build_app_from_snapshot",

@@ -8,18 +8,25 @@ dentro del repositorio, ruta fuera de contrato, fallo del servidor),
 errores y exception chaining sanitizados sin traceback ni rutas,
 argumentos CLI invalidos que no cargan nada, host/puerto/worker/reload
 cerrados, bytes P11 y ETag exactos, import sin efectos (AST +
-subprocess) y concurrency sintetica segura. Ningun test arranca un
-servidor real, carga el snapshot real o invoca P10/P14/P15.
+subprocess), apagado real SIGTERM/SIGINT sobre un snapshot sintetico y
+concurrency segura. Ningun test carga el snapshot real ni invoca
+P10/P14/P15.
 """
 
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 import threading
+import time
+import types
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -104,8 +111,14 @@ def uvicorn_spy(monkeypatch):
         calls.append((args, kwargs))
         return None
 
-    monkeypatch.setattr(runtime.uvicorn, "run", _spy)
+    fake_uvicorn = types.ModuleType("uvicorn")
+    fake_uvicorn.run = _spy
+    monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
     return calls
+
+
+def _configure_snapshot(monkeypatch, path: Path) -> None:
+    monkeypatch.setenv(runtime.RUNTIME_SNAPSHOT_PATH_ENV, str(path))
 
 
 # --------------------------------------------------------------------- #
@@ -146,7 +159,6 @@ def test_ast_runtime_imports_cerrados():
         "pyarrow",
         "pickle",
         "subprocess",
-        "os",
     }
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -169,13 +181,20 @@ def test_ast_runtime_imports_cerrados():
         "__future__",
         "__future__.annotations",
         "argparse",
+        "contextlib",
+        "contextlib.contextmanager",
+        "os",
         "re",
+        "signal",
         "collections.abc",
         "collections.abc.Sequence",
         "pathlib",
         "pathlib.Path",
+        "types",
+        "types.FrameType",
         "typing",
         "typing.Final",
+        "typing.Iterator",
         "uvicorn",
         "fastapi",
         "fastapi.FastAPI",
@@ -344,11 +363,12 @@ def test_health_y_openapi_no_expone_metadata_privada(snapshot_path):
 
 
 def test_cli_snapshot_ausente_falla_antes_de_uvicorn(
-    tmp_path, load_factory, uvicorn_spy
+    tmp_path, load_factory, uvicorn_spy, monkeypatch
 ):
     missing = tmp_path / "no-existe.json"
+    _configure_snapshot(monkeypatch, missing)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(missing)])
+        runtime.main([])
     assert exc_info.value.code == _MESSAGES["snapshot_load_failed"]
     # Una unica tentativa de carga (rechazada por P13); cero servidor.
     assert load_factory.calls == [str(missing)]
@@ -358,24 +378,26 @@ def test_cli_snapshot_ausente_falla_antes_de_uvicorn(
 
 
 def test_cli_snapshot_malformado_falla_antes_de_uvicorn(
-    tmp_path, load_factory, uvicorn_spy
+    tmp_path, load_factory, uvicorn_spy, monkeypatch
 ):
     bad = tmp_path / "malformado.json"
     bad.write_bytes(b"\xef\xbb\xbf\xff\xfe[no-json")
+    _configure_snapshot(monkeypatch, bad)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(bad)])
+        runtime.main([])
     assert exc_info.value.code == _MESSAGES["snapshot_load_failed"]
     assert uvicorn_spy == []
     assert str(bad) not in str(exc_info.value.code)
 
 
 def test_cli_snapshot_incompatible_falla_antes_de_uvicorn(
-    tmp_path, load_factory, uvicorn_spy
+    tmp_path, load_factory, uvicorn_spy, monkeypatch
 ):
     wrong = tmp_path / "incompatible.json"
     wrong.write_text('{"contract": "no-es-un-snapshot-p13"}', encoding="utf-8")
+    _configure_snapshot(monkeypatch, wrong)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(wrong)])
+        runtime.main([])
     assert exc_info.value.code == _MESSAGES["snapshot_load_failed"]
     assert uvicorn_spy == []
 
@@ -410,12 +432,13 @@ def test_build_rutas_fuera_de_contrato_rechazadas(load_factory):
 
 
 def test_cli_directorio_en_lugar_de_snapshot_falla_antes_de_uvicorn(
-    tmp_path, load_factory, uvicorn_spy
+    tmp_path, load_factory, uvicorn_spy, monkeypatch
 ):
     directory = tmp_path / "es-directorio"
     directory.mkdir()
+    _configure_snapshot(monkeypatch, directory)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(directory)])
+        runtime.main([])
     assert exc_info.value.code == _MESSAGES["snapshot_load_failed"]
     assert uvicorn_spy == []
 
@@ -426,9 +449,10 @@ def test_cli_fallo_uvicorn_produce_salida_cerrada(
     def _uvicorn_explota(*args, **kwargs):
         raise RuntimeError("boom con detalle /privado/runtime.json")
 
-    monkeypatch.setattr(runtime.uvicorn, "run", _uvicorn_explota)
+    _configure_snapshot(monkeypatch, snapshot_path)
+    monkeypatch.setattr(sys.modules["uvicorn"], "run", _uvicorn_explota)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(snapshot_path)])
+        runtime.main([])
     assert exc_info.value.code == _MESSAGES["server_unavailable"]
     assert "/privado/runtime.json" not in str(exc_info.value.code)
     assert load_factory.calls == [str(snapshot_path)]
@@ -438,6 +462,7 @@ def test_cli_fallo_uvicorn_produce_salida_cerrada(
 def test_keyboard_interrupt_devuelve_130_sin_salida(
     stage, snapshot_path, load_factory, monkeypatch, capsys
 ):
+    _configure_snapshot(monkeypatch, snapshot_path)
     if stage == "load":
         def _interrupt_load(_path):
             raise KeyboardInterrupt
@@ -451,20 +476,47 @@ def test_keyboard_interrupt_devuelve_130_sin_salida(
         def _interrupt_serve(*_args, **_kwargs):
             raise KeyboardInterrupt
 
-        monkeypatch.setattr(runtime.uvicorn, "run", _interrupt_serve)
+        fake_uvicorn = types.ModuleType("uvicorn")
+        fake_uvicorn.run = _interrupt_serve
+        monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
 
-    assert runtime.main(["--snapshot-path", str(snapshot_path)]) == 130
+    assert runtime.main([]) == 130
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_sigterm_gestionado_devuelve_0_y_restaura_handler(
+    snapshot_path, load_factory, monkeypatch, capsys
+):
+    _configure_snapshot(monkeypatch, snapshot_path)
+    original_handler = signal.getsignal(signal.SIGTERM)
+    observed_handlers = []
+
+    def _raise_sigterm(*_args, **_kwargs):
+        observed_handlers.append(signal.getsignal(signal.SIGTERM))
+        signal.raise_signal(signal.SIGTERM)
+
+    fake_uvicorn = types.ModuleType("uvicorn")
+    fake_uvicorn.run = _raise_sigterm
+    monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
+
+    assert runtime.main([]) == 0
+    assert observed_handlers == [runtime._raise_managed_server_signal]
+    assert signal.getsignal(signal.SIGTERM) is original_handler
+    assert load_factory.calls == [str(snapshot_path)]
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
 
 
 def test_argparse_no_repite_argumentos_privados(
-    snapshot_path, load_factory, uvicorn_spy, capsys
+    snapshot_path, load_factory, uvicorn_spy, capsys, monkeypatch
 ):
     secret = str(snapshot_path.parent / "identidad-secreta")
+    _configure_snapshot(monkeypatch, snapshot_path)
     with pytest.raises(SystemExit) as exc_info:
-        runtime.main(["--snapshot-path", str(snapshot_path), "--force", secret])
+        runtime.main(["--force", secret])
     assert exc_info.value.code == 2
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -480,20 +532,22 @@ def test_argparse_no_repite_argumentos_privados(
 # --------------------------------------------------------------------- #
 
 
-def test_cli_argumentos_invalidos_no_cargan(snapshot_path, load_factory, uvicorn_spy):
-    base = ["--snapshot-path", str(snapshot_path)]
+def test_cli_argumentos_invalidos_no_cargan(
+    snapshot_path, load_factory, uvicorn_spy, monkeypatch
+):
+    _configure_snapshot(monkeypatch, snapshot_path)
     invalid_argv = [
-        [],
-        base + ["--port", "70000"],
-        base + ["--port", "0"],
-        base + ["--port", "0080"],
-        base + ["--port", "80 0"],
-        base + ["--port", "-1"],
-        base + ["--host", "0.0.0.0"],
-        base + ["--host", "localhost"],
-        base + ["--workers", "4"],
-        base + ["--reload"],
-        base + ["--force"],
+        ["--port", "70000"],
+        ["--port", "0"],
+        ["--port", "0080"],
+        ["--port", "80 0"],
+        ["--port", "-1"],
+        ["--host", "0.0.0.0"],
+        ["--host", "localhost"],
+        ["--workers", "4"],
+        ["--reload"],
+        ["--force"],
+        ["--snapshot-path", str(snapshot_path)],
     ]
     for argv in invalid_argv:
         with pytest.raises(SystemExit) as exc_info:
@@ -503,12 +557,55 @@ def test_cli_argumentos_invalidos_no_cargan(snapshot_path, load_factory, uvicorn
     assert uvicorn_spy == []
 
 
-def test_cli_valido_entrega_a_uvicorn_cerrado(
-    snapshot_path, load_factory, uvicorn_spy
+def test_cli_exige_variable_dedicada_sin_default(
+    monkeypatch, load_factory, uvicorn_spy, capsys
 ):
-    code = runtime.main(
-        ["--snapshot-path", str(snapshot_path), "--port", "8123"]
+    monkeypatch.delenv(runtime.RUNTIME_SNAPSHOT_PATH_ENV, raising=False)
+    with pytest.raises(SystemExit) as exc_info:
+        runtime.main([])
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == _MESSAGES["cli_usage_error"] + "\n"
+    assert load_factory.calls == []
+    assert uvicorn_spy == []
+
+
+@pytest.mark.parametrize("failure_kind", ["usage", "load"])
+def test_subprocess_cli_1_y_2_sin_traceback_ni_ruta(tmp_path, failure_kind):
+    private_path = tmp_path / "ruta-privada-no-existente.json"
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = (
+        str(_ROOT) + os.pathsep + environment.get("PYTHONPATH", "")
     )
+    if failure_kind == "usage":
+        environment.pop(runtime.RUNTIME_SNAPSHOT_PATH_ENV, None)
+        expected_code = 2
+        expected_message = _MESSAGES["cli_usage_error"]
+    else:
+        environment[runtime.RUNTIME_SNAPSHOT_PATH_ENV] = str(private_path)
+        expected_code = 1
+        expected_message = _MESSAGES["snapshot_load_failed"]
+    completed = subprocess.run(
+        [sys.executable, "-m", "src.api.runtime"],
+        cwd=str(_ROOT),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == expected_code
+    assert completed.stdout == ""
+    assert completed.stderr.strip() == expected_message
+    assert "Traceback" not in completed.stderr
+    assert str(private_path) not in completed.stderr
+
+
+def test_cli_valido_entrega_a_uvicorn_cerrado(
+    snapshot_path, load_factory, uvicorn_spy, monkeypatch
+):
+    _configure_snapshot(monkeypatch, snapshot_path)
+    code = runtime.main(["--port", "8123"])
     assert code == 0
     assert load_factory.calls == [str(snapshot_path)]
     assert len(uvicorn_spy) == 1
@@ -536,6 +633,107 @@ def test_logging_config_es_nueva_y_no_reactiva_access_log():
     assert first is not second
     first["loggers"]["uvicorn.access"]["handlers"].append("closed")
     assert second["loggers"]["uvicorn.access"]["handlers"] == []
+
+
+def _unused_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind((runtime.RUNTIME_DEFAULT_HOST, 0))
+        return int(listener.getsockname()[1])
+
+
+def _wait_for_health(port: int, process: subprocess.Popen) -> bytes:
+    deadline = time.monotonic() + 20.0
+    endpoint = f"http://{runtime.RUNTIME_DEFAULT_HOST}:{port}/healthz"
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AssertionError(
+                f"P17 termino antes del health check: {process.returncode}"
+            )
+        try:
+            with urllib.request.urlopen(endpoint, timeout=0.25) as response:
+                if response.status == 200:
+                    return response.read()
+        except OSError:
+            time.sleep(0.05)
+    raise AssertionError("P17 no alcanzo healthz dentro del plazo sintetico")
+
+
+def _wait_until_port_is_free(port: int) -> None:
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            try:
+                listener.bind((runtime.RUNTIME_DEFAULT_HOST, port))
+            except OSError:
+                time.sleep(0.05)
+            else:
+                return
+    raise AssertionError("El puerto loopback siguio ocupado tras apagar P17")
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or importlib.util.find_spec("uvicorn") is None,
+    reason="Las senales subprocess POSIX requieren Uvicorn instalado.",
+)
+@pytest.mark.parametrize(
+    "shutdown_signal",
+    [signal.SIGTERM, signal.SIGINT],
+    ids=["sigterm", "sigint"],
+)
+def test_subprocess_posix_apaga_limpio_sin_ruta_ni_residuos(
+    snapshot_path, shutdown_signal
+):
+    port = _unused_loopback_port()
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = (
+        str(_ROOT) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    environment[runtime.RUNTIME_SNAPSHOT_PATH_ENV] = str(snapshot_path)
+    command = [
+        sys.executable,
+        "-m",
+        "src.api.runtime",
+        "--host",
+        runtime.RUNTIME_DEFAULT_HOST,
+        "--port",
+        str(port),
+    ]
+    assert str(snapshot_path) not in command
+    process = subprocess.Popen(
+        command,
+        cwd=str(_ROOT),
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        shell=False,
+        start_new_session=True,
+    )
+    try:
+        health_body = _wait_for_health(port, process)
+        process.send_signal(shutdown_signal)
+        stdout, stderr = process.communicate(timeout=20.0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=10.0)
+
+    assert json.loads(health_body) == {
+        "api_version": "v1",
+        "service": SERVICE_NAME,
+        "status": "ok",
+    }
+    assert process.returncode == 0
+    assert stdout == ""
+    combined = stdout + stderr
+    assert "Traceback" not in combined
+    assert "--snapshot-path" not in combined
+    assert str(snapshot_path) not in combined
+    assert _PLAYER not in combined
+    assert _OPPONENT not in combined
+    _wait_until_port_is_free(port)
+    with pytest.raises(ProcessLookupError):
+        os.kill(process.pid, 0)
 
 
 # --------------------------------------------------------------------- #

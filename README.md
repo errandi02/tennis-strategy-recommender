@@ -11,21 +11,56 @@ Proyecto en fase de inicialización.
 Arranque local productivo de la API P12 sobre el snapshot privado P13
 ya generado por el flujo manual P15/P16 (bucle local only, un worker,
 sin reload, una sola carga del snapshot). La ruta del snapshot es
-configuración obligatoria por arranque y debe vivir fuera del
-repositorio; nunca se documenta aquí (comando genérico):
+configuración obligatoria mediante la variable dedicada
+`TENNIS_TACTICAL_SNAPSHOT_PATH`, debe vivir fuera del repositorio y no
+se copia a la línea de procesos. No existe valor por defecto ni flag
+alternativo. Ejecución foreground genérica:
 
 ```bash
-python -m src.api.runtime \
-  --snapshot-path /ruta/externa/a/snapshot-privado-p13.json \
-  [--host 127.0.0.1] [--port 8000]
+export TENNIS_TACTICAL_SNAPSHOT_PATH='/ruta/externa/snapshot-p13.json'
+python -m src.api.runtime --host 127.0.0.1 --port 8000
+unset TENNIS_TACTICAL_SNAPSHOT_PATH
 ```
 
 Salidas: `0` servidor terminado; `1` snapshot ausente/invalido/
 incompatible o servidor no iniciable (mensaje cerrado); `2` error de
-uso del CLI; `130` interrupcion, sin traceback. El access log HTTP se
-mantiene desactivado para no registrar rutas o queries solicitadas.
+uso del CLI; `130` interrupción fuera de la frontera del servidor.
+SIGTERM y SIGINT sobre el proceso servidor realizan un apagado ordenado
+y terminan con `0`, sin traceback. El access log HTTP y los loggers
+internos de Uvicorn se mantienen desactivados para no registrar rutas,
+queries, argumentos o tracebacks.
 Endpoints: `GET /healthz` y
 `POST /api/v1/recommendations`.
+
+En macOS, este launcher `zsh` desacopla el proceso sin colocar un
+`/bin/sh` entre el sistema y Python. `caffeinate` acompaña al PID en un
+proceso separado; no envuelve el runtime ni recibe la ruta. `umask 077`
+protege log y PID, y `read -s` evita copiar la ruta al comando o al
+historial:
+
+```zsh
+umask 077
+read -r -s 'TENNIS_TACTICAL_SNAPSHOT_PATH?Ruta privada P13: '
+printf '\n'
+export TENNIS_TACTICAL_SNAPSHOT_PATH
+
+nohup python -m src.api.runtime --host 127.0.0.1 --port 8000 \
+  > "$HOME/Documents/p17-runtime.log" 2>&1 &
+runtime_pid=$!
+printf '%s\n' "$runtime_pid" > "$HOME/Documents/p17-runtime.pid"
+unset TENNIS_TACTICAL_SNAPSHOT_PATH
+disown
+
+nohup caffeinate -i -w "$runtime_pid" >/dev/null 2>&1 &
+disown
+```
+
+El apagado posterior se dirige al PID Python, no a `caffeinate` ni a un
+shell intermedio:
+
+```zsh
+kill -TERM "$(cat "$HOME/Documents/p17-runtime.pid")"
+```
 
 ## Primer hito
 
