@@ -28,14 +28,15 @@ Contrato cerrado del modulo:
   no puede iniciarse producen salida 1 con mensajes del catalogo
   cerrado, sin traceback, sin exception chaining y sin rutas,
   identidades ni contenido del snapshot. Los errores de uso del CLI
-  producen salida 2 (argparse) sin cargar nada.
+  producen salida 2 con un mensaje cerrado, sin repetir argumentos, y
+  sin cargar nada. Una interrupcion devuelve 130 sin traceback.
 - Uvicorn: host fijo ``127.0.0.1``, puerto decimal estricto
   ``1..65535``, ``workers=1`` inmutable (no existe flag ``--workers``),
   ``reload=False`` inmutable (no existe flag ``--reload``), logging
   cerrado y sanitizado.
 - Solo se arranca el servidor despues de que la carga P13 completo con
   exito: ``/healthz`` solo existe cuando el provider ya se cargo.
-- Ejecucion local nativa (macOS/Linux); sin Docker.
+- Ejecucion local nativa (Windows/macOS/Linux); sin Docker.
 """
 
 from __future__ import annotations
@@ -61,10 +62,6 @@ RUNTIME_MAX_PORT: Final = 65535
 RUNTIME_WORKERS: Final = 1
 RUNTIME_RELOAD: Final = False
 
-# Raiz del repositorio (derivada del propio modulo; sin hardcodeo de
-# rutas reales): el snapshot debe vivir FUERA de ella.
-_REPO_ROOT: Final = Path(__file__).resolve().parents[2]
-
 # Mismo criterio de ruta absoluta que el contrato P13 (POSIX, unidad
 # Windows, UNC); sin divergencia.
 _ABSOLUTE_PATH: Final = re.compile(
@@ -86,47 +83,9 @@ _RUNTIME_MESSAGES: Final = {
         "Arranque P17 fallido: el servidor local no pudo iniciarse "
         "(cierre cerrado, sin detalles)."
     ),
-}
-
-_LOGGING_CONFIG: Final = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "closed": {"format": "%(levelname)s %(name)s: %(message)s"},
-    },
-    "handlers": {
-        "closed": {
-            "class": "logging.StreamHandler",
-            "formatter": "closed",
-            "stream": "ext://sys.stderr",
-        },
-    },
-    "loggers": {
-        # El access log de uvicorn solo emite method/path/status; los
-        # path son los endpoints publicos cerrados de P12 (sin PII).
-        "uvicorn.access": {
-            "handlers": ["closed"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "uvicorn.error": {
-            "handlers": ["closed"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "uvicorn": {
-            "handlers": ["closed"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        # Los service events sanitizados de P12 tambien pasan por el
-        # mismo canal cerrado.
-        "tactical_recommendation_api": {
-            "handlers": ["closed"],
-            "level": "INFO",
-            "propagate": False,
-        },
-    },
+    "cli_usage_error": (
+        "Uso P17 invalido: argumentos rechazados por el contrato cerrado."
+    ),
 }
 
 
@@ -137,6 +96,62 @@ class RuntimePathContractError(RuntimeError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class _ClosedArgumentParser(argparse.ArgumentParser):
+    """Argparse con salida 2 fija que nunca repite argumentos privados."""
+
+    def error(self, message: str) -> None:
+        del message
+        self.exit(2, f'{_RUNTIME_MESSAGES["cli_usage_error"]}\n')
+
+
+def _repository_root() -> Path:
+    """Resuelve la raiz solo durante una llamada explicita, nunca al importar."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _closed_logging_config() -> dict[str, object]:
+    """Crea una configuracion nueva sin access log ni estado global mutable."""
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "closed": {"format": "%(levelname)s %(name)s: %(message)s"},
+        },
+        "handlers": {
+            "closed": {
+                "class": "logging.StreamHandler",
+                "formatter": "closed",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            # Ninguna URL, query ni path solicitado debe llegar al log.
+            "uvicorn.access": {
+                "handlers": [],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "uvicorn.error": {
+                "handlers": [],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            "uvicorn": {
+                "handlers": [],
+                "level": "CRITICAL",
+                "propagate": False,
+            },
+            # Los service events sanitizados de P12 pasan por el canal
+            # cerrado sin incluir inputs individuales.
+            "tactical_recommendation_api": {
+                "handlers": ["closed"],
+                "level": "INFO",
+                "propagate": False,
+            },
+        },
+    }
 
 
 def _route_raw_text(value: object) -> str:
@@ -175,13 +190,14 @@ def _reject_route_outside_contract(raw: str) -> None:
 def _reject_route_inside_repository(raw: str) -> None:
     """El snapshot debe vivir fuera del repositorio (texto o resuelto)."""
     textual = Path(raw)
-    if textual.is_relative_to(_REPO_ROOT):
+    repository_root = _repository_root()
+    if textual.is_relative_to(repository_root):
         raise RuntimePathContractError(_RUNTIME_MESSAGES["route_in_repository"])
     try:
         resolved = textual.resolve()
     except (OSError, RuntimeError, ValueError):
         raise RuntimePathContractError(_RUNTIME_MESSAGES["route_rejected"]) from None
-    if resolved.is_relative_to(_REPO_ROOT):
+    if resolved.is_relative_to(repository_root):
         raise RuntimePathContractError(_RUNTIME_MESSAGES["route_in_repository"])
 
 
@@ -206,7 +222,7 @@ def _strict_port(value: str) -> int:
 
 def _parse_cli(argv: Sequence[str] | None) -> tuple[str, str, int]:
     """Valida el uso del CLI (salida 2 argparse) sin cargar nada."""
-    parser = argparse.ArgumentParser(
+    parser = _ClosedArgumentParser(
         prog="tactical-recommendation-api-runtime",
         description=(
             "P17: arranque local productivo de la API P12 sobre el "
@@ -264,6 +280,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     snapshot_raw, host, port = _parse_cli(argv)
     try:
         app = build_app_from_snapshot(snapshot_raw)
+    except KeyboardInterrupt:
+        return 130
     except Exception:
         raise SystemExit(_RUNTIME_MESSAGES["snapshot_load_failed"]) from None
     try:
@@ -273,8 +291,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             port=port,
             workers=RUNTIME_WORKERS,
             reload=RUNTIME_RELOAD,
-            log_config=_LOGGING_CONFIG,
+            access_log=False,
+            log_config=_closed_logging_config(),
         )
+    except KeyboardInterrupt:
+        return 130
     except Exception:
         raise SystemExit(_RUNTIME_MESSAGES["server_unavailable"]) from None
     return 0

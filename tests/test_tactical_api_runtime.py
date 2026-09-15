@@ -232,6 +232,24 @@ def test_ast_runtime_solo_guard_main_y_sin_llamadas_modulo():
     for statement in tree.body:
         if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
             pytest.fail("Llamada de modulo encontrada en runtime")
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Call) and isinstance(
+                    node.func, ast.Attribute
+                ) and node.func.attr in {
+                    "absolute",
+                    "exists",
+                    "is_dir",
+                    "is_file",
+                    "open",
+                    "read_bytes",
+                    "read_text",
+                    "resolve",
+                    "stat",
+                }:
+                    pytest.fail(
+                        f"I/O de modulo encontrado: {node.func.attr}()"
+                    )
 
 
 def test_ast_runtime_exception_chaining_cerrado():
@@ -416,6 +434,47 @@ def test_cli_fallo_uvicorn_produce_salida_cerrada(
     assert load_factory.calls == [str(snapshot_path)]
 
 
+@pytest.mark.parametrize("stage", ["load", "serve"])
+def test_keyboard_interrupt_devuelve_130_sin_salida(
+    stage, snapshot_path, load_factory, monkeypatch, capsys
+):
+    if stage == "load":
+        def _interrupt_load(_path):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(
+            p13,
+            "create_persisted_tactical_recommendation_provider",
+            _interrupt_load,
+        )
+    else:
+        def _interrupt_serve(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(runtime.uvicorn, "run", _interrupt_serve)
+
+    assert runtime.main(["--snapshot-path", str(snapshot_path)]) == 130
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_argparse_no_repite_argumentos_privados(
+    snapshot_path, load_factory, uvicorn_spy, capsys
+):
+    secret = str(snapshot_path.parent / "identidad-secreta")
+    with pytest.raises(SystemExit) as exc_info:
+        runtime.main(["--snapshot-path", str(snapshot_path), "--force", secret])
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == _MESSAGES["cli_usage_error"] + "\n"
+    assert secret not in captured.err
+    assert str(snapshot_path) not in captured.err
+    assert load_factory.calls == []
+    assert uvicorn_spy == []
+
+
 # --------------------------------------------------------------------- #
 # D. CLI cerrado: uso, host, puerto, worker, reload                       #
 # --------------------------------------------------------------------- #
@@ -460,9 +519,23 @@ def test_cli_valido_entrega_a_uvicorn_cerrado(
     assert kwargs["port"] == 8123
     assert kwargs["workers"] == 1
     assert kwargs["reload"] is False
-    assert kwargs["log_config"] is runtime._LOGGING_CONFIG
+    assert kwargs["access_log"] is False
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        assert kwargs["log_config"]["loggers"][logger_name] == {
+            "handlers": [],
+            "level": "CRITICAL",
+            "propagate": False,
+        }
     assert str(snapshot_path) not in repr(kwargs.get("log_config", ""))
     assert str(snapshot_path) not in repr(args)
+
+
+def test_logging_config_es_nueva_y_no_reactiva_access_log():
+    first = runtime._closed_logging_config()
+    second = runtime._closed_logging_config()
+    assert first is not second
+    first["loggers"]["uvicorn.access"]["handlers"].append("closed")
+    assert second["loggers"]["uvicorn.access"]["handlers"] == []
 
 
 # --------------------------------------------------------------------- #

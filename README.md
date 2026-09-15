@@ -22,7 +22,9 @@ python -m src.api.runtime \
 
 Salidas: `0` servidor terminado; `1` snapshot ausente/invalido/
 incompatible o servidor no iniciable (mensaje cerrado); `2` error de
-uso del CLI. Endpoints: `GET /healthz` y
+uso del CLI; `130` interrupcion, sin traceback. El access log HTTP se
+mantiene desactivado para no registrar rutas o queries solicitadas.
+Endpoints: `GET /healthz` y
 `POST /api/v1/recommendations`.
 
 ## Primer hito
