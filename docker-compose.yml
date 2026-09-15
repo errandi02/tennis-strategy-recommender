@@ -1,0 +1,76 @@
+# P19: contenerizacion reproducible de la API P17 y la UI Streamlit P18.
+# El snapshot P13 nunca entra en Git ni en las imagenes: solo se monta
+# read-only desde el host, en api, a partir de TENNIS_TACTICAL_SNAPSHOT_HOST_PATH
+# (definida localmente en .env, no versionado). El producto se expone
+# unicamente por la UI en 127.0.0.1:8501; api nunca publica un puerto
+# al host.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    expose:
+      - "8000"
+    environment:
+      TENNIS_TACTICAL_RUNTIME_MODE: container
+      TENNIS_TACTICAL_SNAPSHOT_PATH: /snapshot/tactical-recommendation-snapshot.json
+    volumes:
+      - type: bind
+        source: ${TENNIS_TACTICAL_SNAPSHOT_HOST_PATH}
+        target: /snapshot/tactical-recommendation-snapshot.json
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    networks:
+      - tennis_internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui/Dockerfile
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      TENNIS_TACTICAL_RUNTIME_MODE: container
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    networks:
+      - tennis_internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  tennis_internal:
+    driver: bridge

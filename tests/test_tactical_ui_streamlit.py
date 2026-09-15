@@ -426,7 +426,7 @@ def test_formulario_limpia_identidades_y_usa_claves_estables(monkeypatch) -> Non
 
     double = _StreamlitDouble()
     monkeypatch.setattr(ui, "st", double)
-    player, opponent, chosen_date, submitted = ui._form_inputs()
+    player, opponent, chosen_date, submitted = ui.form_inputs()
     assert (player, opponent, submitted) == ("A", "B", "")
     assert type(chosen_date).__name__ == "date"
     assert double.form_call == ("recommendation_form", True)
@@ -1269,3 +1269,96 @@ def test_render_no_disponible_sin_excepciones(streamlit_silenced) -> None:
 def test_render_parcial_sin_excepciones(streamlit_silenced) -> None:
     model = _model(status="partially_available")
     ui.render_public_recommendation(model)
+
+
+# --------------------------------------------------------------------- #
+# H. Modo contenedor P19: endpoint fijo, sin entrada del usuario         #
+# --------------------------------------------------------------------- #
+
+
+def test_form_inputs_es_publico() -> None:
+    assert hasattr(ui, "form_inputs")
+    assert not hasattr(ui, "_form_inputs")
+
+
+def test_validate_container_api_base_url_acepta_solo_la_constante() -> None:
+    assert (
+        ui.validate_container_api_base_url(ui.UI_CONTAINER_API_BASE_URL)
+        == ui.UI_CONTAINER_API_BASE_URL
+    )
+    assert ui.UI_CONTAINER_API_BASE_URL == "http://api:8000"
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://127.0.0.1:8000",
+        "http://api:8000/",
+        "http://api:8001",
+        "https://api:8000",
+        "http://attacker.example:8000",
+        "http://api:8000?x=1",
+        "",
+        None,
+        42,
+    ],
+)
+def test_validate_container_api_base_url_rechaza_todo_lo_demas(bad_url) -> None:
+    with pytest.raises(ValueError):
+        ui.validate_container_api_base_url(bad_url)
+
+
+def test_fetch_recommendation_modo_contenedor_usa_url_fija(monkeypatch) -> None:
+    payload = _payload()
+    client = _FakeClient(
+        _FakeResponse(200, json.dumps(payload).encode("utf-8"))
+    )
+    outcome = ui.fetch_recommendation(
+        client,
+        ui.UI_CONTAINER_API_BASE_URL,
+        _PLAYER,
+        _OPPONENT,
+        _AS_OF,
+        container_mode=True,
+    )
+    assert outcome.model is not None
+    assert client.calls[0][1] == (
+        ui.UI_CONTAINER_API_BASE_URL + ui.UI_RECOMMENDATIONS_PATH
+    )
+
+
+def test_fetch_recommendation_modo_contenedor_rechaza_url_loopback() -> None:
+    """En modo contenedor, una URL local valida en modo local se rechaza:
+    el validador cerrado del modo contenedor no acepta ningun host
+    distinto de la constante interna, ni siquiera loopback."""
+    client = _FakeClient()
+    outcome = ui.fetch_recommendation(
+        client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF, container_mode=True
+    )
+    assert outcome.model is None
+    assert client.calls == []
+
+
+def test_fetch_recommendation_modo_local_por_defecto_no_cambia() -> None:
+    """container_mode por defecto es False: comportamiento identico a
+    antes de P19 para cualquier llamada existente sin el nuevo kwarg."""
+    payload = _payload()
+    client = _FakeClient(
+        _FakeResponse(200, json.dumps(payload).encode("utf-8"))
+    )
+    outcome = ui.fetch_recommendation(
+        client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.model is not None
+    assert client.calls[0][1] == _BASE_URL + ui.UI_RECOMMENDATIONS_PATH
+
+
+def test_fetch_recommendation_modo_local_rechaza_url_contenedor() -> None:
+    """Modo local (container_mode=False, el default) nunca acepta el
+    endpoint interno del contenedor: sigue exigiendo loopback exacto."""
+    client = _FakeClient()
+    outcome = ui.fetch_recommendation(
+        client, ui.UI_CONTAINER_API_BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.model is None
+    assert client.calls == []

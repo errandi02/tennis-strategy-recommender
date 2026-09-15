@@ -1,0 +1,44 @@
+# Contexto de build P19: excluye todo por defecto y el Dockerfile
+# de cada servicio hace COPY explicito solo de lo que necesita.
+*
+
+# Codigo fuente reintroducido selectivamente por los Dockerfile.
+!src/
+!src/**
+!docker/
+!docker/**
+
+# Nunca en el contexto de build, incluso dentro de src/ o docker/.
+.git
+.git/**
+.env
+.env.*
+!.env.example
+data
+data/**
+reports
+reports/**
+models
+models/**
+notebooks
+notebooks/**
+docs
+docs/**
+tests
+tests/**
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.conda/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.pid

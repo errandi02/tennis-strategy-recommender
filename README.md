@@ -97,6 +97,83 @@ que se trata de evidencia historica observacional, no de causalidad ni
 de garantia de exito; si el sistema abstiene, la UI lo muestra sin
 inventar recomendaciones.
 
+## Contenedores reproducibles (P19)
+
+Contenerización de la API P17 y la UI Streamlit P18 con Docker Compose.
+Dos servicios independientes en una red interna dedicada:
+
+- **`api`**: FastAPI P12 sobre el snapshot P13, cargado una sola vez al
+  arrancar. Nunca publica un puerto al host (`expose: 8000` únicamente);
+  solo es alcanzable desde `ui` dentro de la red interna de Compose.
+- **`ui`**: Streamlit sobre `http://api:8000` (endpoint interno fijo,
+  no configurable desde la interfaz). Único puerto publicado:
+  `127.0.0.1:8501`. No monta el snapshot ni conoce su ruta.
+
+El modo contenedor es una configuración server-side cerrada y exacta
+(`TENNIS_TACTICAL_RUNTIME_MODE=container`, fijada en
+`docker-compose.yml`, nunca en `.env` ni editable por el usuario): en
+`api` activa `host=0.0.0.0` (imposible vía `--host` del CLI, que sigue
+rechazando cualquier valor distinto de `127.0.0.1`); en `ui` fija el
+endpoint a `http://api:8000`, sin renderizar ningún campo de URL
+editable. Cualquier otro valor de esa variable (ausente fuera de
+Compose, vacío o manipulado) falla cerrado sin cargar el snapshot ni
+renderizar el formulario. El modo local P17/P18 (sin la variable) es
+idéntico al previo a P19: host siempre `127.0.0.1`, URL editable
+restringida a loopback.
+
+El snapshot privado P13 **nunca** entra en Git ni en las imágenes:
+`.dockerignore` excluye `data/`, `reports/`, `models/`, `notebooks/`,
+`tests/`, `.git/` y `.env` del contexto de build, y cada `Dockerfile`
+solo copia los paquetes de código que su servicio importa
+transitivamente (sin datos ni artefactos analíticos). La ruta real en
+el host se define en un `.env` local no versionado, a partir de
+`.env.example`:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env  # sustituye el placeholder por la ruta real del snapshot
+```
+
+`.env` solo contiene `TENNIS_TACTICAL_SNAPSHOT_HOST_PATH` (ruta en el
+host); Compose la monta read-only en una ruta interna fija dentro de
+`api`, que es la única variable que el proceso `api` recibe
+(`TENNIS_TACTICAL_SNAPSHOT_PATH=/snapshot/tactical-recommendation-snapshot.json`,
+fijada en `docker-compose.yml`, no en `.env`).
+
+Build, arranque y estado (PowerShell):
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Acceso: [http://127.0.0.1:8501](http://127.0.0.1:8501) una vez que
+`api` está `healthy` (healthcheck interno sobre `/healthz`, sin datos
+privados). Logs sanitizados (nunca contienen jugador, rival, fecha,
+payload ni la ruta del snapshot), acotados por rotación
+(`json-file`, `max-size=10m`, `max-file=3`):
+
+```powershell
+docker compose logs -f
+```
+
+Apagado y limpieza:
+
+```powershell
+docker compose down
+```
+
+Seguridad aplicada en ambos servicios: usuario no-root con UID/GID
+explícito, sistema de archivos raíz `read_only` (con `tmpfs` solo en
+`/tmp`), `cap_drop: [ALL]`, `security_opt: no-new-privileges:true`,
+sin `privileged`, sin red de host, sin socket de Docker, `restart: "no"`,
+límites de memoria/CPU/procesos, y red interna dedicada
+(`tennis_internal`) en lugar de la red por defecto.
+
+La documentación local de P17/P18 (ejecución nativa sin Docker) se
+mantiene íntegra en las secciones anteriores.
+
 ## Primer hito
 
 Demostrar empíricamente la viabilidad del Match Charting Project:

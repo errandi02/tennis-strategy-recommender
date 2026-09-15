@@ -40,6 +40,18 @@ Contrato cerrado del modulo:
 - Solo se arranca el servidor despues de que la carga P13 completo con
   exito: ``/healthz`` solo existe cuando el provider ya se cargo.
 - Ejecucion local nativa (Windows/macOS/Linux); sin Docker.
+
+Modo contenedor P19 (opcional, server-side, cerrado): la variable
+dedicada ``TENNIS_TACTICAL_RUNTIME_MODE`` decide EXCLUSIVAMENTE si el
+proceso escucha en ``0.0.0.0`` (el valor literal nunca proviene del
+entorno, solo la decision de activarlo). Sin la variable, el
+comportamiento es identico al local (host siempre ``127.0.0.1``, sin
+excepciones). Con el valor exacto ``container`` el host pasa a
+``0.0.0.0`` dentro de la red privada de Compose; ningun flag ``--host``
+puede producir ese valor (sigue rechazado por el CLI). Cualquier otro
+valor de la variable (vacio, manipulado o desconocido) falla cerrado
+antes de cargar el snapshot, con salida 1 y el mismo mensaje cerrado
+del catalogo, sin revelar la variable ni su valor.
 """
 
 from __future__ import annotations
@@ -68,6 +80,9 @@ RUNTIME_MAX_PORT: Final = 65535
 RUNTIME_WORKERS: Final = 1
 RUNTIME_RELOAD: Final = False
 RUNTIME_SNAPSHOT_PATH_ENV: Final = "TENNIS_TACTICAL_SNAPSHOT_PATH"
+RUNTIME_MODE_ENV: Final = "TENNIS_TACTICAL_RUNTIME_MODE"
+RUNTIME_CONTAINER_MODE_VALUE: Final = "container"
+RUNTIME_CONTAINER_HOST: Final = "0.0.0.0"
 
 # Mismo criterio de ruta absoluta que el contrato P13 (POSIX, unidad
 # Windows, UNC); sin divergencia.
@@ -93,11 +108,24 @@ _RUNTIME_MESSAGES: Final = {
     "cli_usage_error": (
         "Uso P17 invalido: argumentos rechazados por el contrato cerrado."
     ),
+    "runtime_mode_rejected": (
+        "Arranque P17 rechazado: configuracion de entorno fuera del "
+        "contrato cerrado (cierre cerrado, sin detalles)."
+    ),
 }
 
 
 class RuntimePathContractError(RuntimeError):
     """Rechazo cerrado del pre-check de ruta (mensaje del catalogo)."""
+
+    __slots__ = ()
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class RuntimeModeContractError(RuntimeError):
+    """Rechazo cerrado del modo de entorno P19 (mensaje del catalogo)."""
 
     __slots__ = ()
 
@@ -308,6 +336,25 @@ def _parse_cli(argv: Sequence[str] | None) -> tuple[str, str, int]:
     return raw, arguments.host, arguments.port
 
 
+def _resolve_serve_host(cli_host: str) -> str:
+    """Selecciona el host de escucha real segun el modo de entorno cerrado.
+
+    Sin la variable dedicada, el host es exactamente el validado por CLI
+    (siempre ``127.0.0.1``): comportamiento local identico al previo a
+    P19. Con el valor exacto del modo contenedor, el host pasa a
+    ``0.0.0.0`` SOLO dentro de esta funcion -- el literal nunca proviene
+    del entorno, solo la decision binaria de activarlo, por lo que el
+    usuario no puede introducir un host arbitrario via configuracion.
+    Cualquier otro valor (vacio, manipulado o desconocido) falla cerrado.
+    """
+    raw_mode = os.environ.get(RUNTIME_MODE_ENV)
+    if raw_mode is None:
+        return cli_host
+    if raw_mode == RUNTIME_CONTAINER_MODE_VALUE:
+        return RUNTIME_CONTAINER_HOST
+    raise RuntimeModeContractError(_RUNTIME_MESSAGES["runtime_mode_rejected"])
+
+
 def build_app_from_snapshot(snapshot_path: object) -> FastAPI:
     """Construye la app P12 cargando el snapshot P13 exactamente una vez.
 
@@ -336,6 +383,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     snapshot_raw, host, port = _parse_cli(argv)
     try:
+        serve_host = _resolve_serve_host(host)
+    except RuntimeModeContractError:
+        raise SystemExit(_RUNTIME_MESSAGES["runtime_mode_rejected"]) from None
+    try:
         app = build_app_from_snapshot(snapshot_raw)
     except KeyboardInterrupt:
         return 130
@@ -343,7 +394,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(_RUNTIME_MESSAGES["snapshot_load_failed"]) from None
     try:
         with _normalize_server_signals():
-            _serve_app(app, host, port)
+            _serve_app(app, serve_host, port)
     except _ManagedServerSignal:
         return 0
     except KeyboardInterrupt:
@@ -358,14 +409,18 @@ if __name__ == "__main__":
 
 
 __all__ = (
+    "RUNTIME_CONTAINER_HOST",
+    "RUNTIME_CONTAINER_MODE_VALUE",
     "RUNTIME_DEFAULT_HOST",
     "RUNTIME_DEFAULT_PORT",
     "RUNTIME_MAX_PORT",
     "RUNTIME_MIN_PORT",
+    "RUNTIME_MODE_ENV",
     "RUNTIME_NAME",
     "RUNTIME_RELOAD",
     "RUNTIME_SNAPSHOT_PATH_ENV",
     "RUNTIME_WORKERS",
+    "RuntimeModeContractError",
     "RuntimePathContractError",
     "build_app_from_snapshot",
     "main",

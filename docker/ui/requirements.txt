@@ -1,0 +1,9 @@
+# Dependencias de runtime minimas del servicio ui (P18/P19).
+# Mismos pines que requirements.txt (no se actualiza ninguna version).
+# Justificacion: streamlit renderiza la interfaz; httpx es el cliente
+# HTTP hacia el servicio api interno. Streamlit instala pandas/pyarrow
+# como dependencias transitivas propias (usadas por su motor de
+# renderizado); no se anaden explicitamente aqui ni se fijan por
+# separado, y el codigo de este servicio no las importa.
+streamlit==1.63.0
+httpx==0.28.1

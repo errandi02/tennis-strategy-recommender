@@ -55,6 +55,7 @@ from src.recommender import tactical_recommendation_contract as p11
 
 UI_API_BASE_DEFAULT: Final = "http://127.0.0.1:8000"
 UI_API_HOST_ALLOWED: Final = "127.0.0.1"
+UI_CONTAINER_API_BASE_URL: Final = "http://api:8000"
 UI_MIN_PORT: Final = 1
 UI_MAX_PORT: Final = 65535
 UI_REQUEST_TIMEOUT_SECONDS: Final = 30.0
@@ -167,6 +168,19 @@ def validate_api_base_url(raw: object) -> str:
     if parts.fragment:
         raise ValueError(_UI_URL_MESSAGES["fragment"])
     return f"http://{UI_API_HOST_ALLOWED}:{port}"
+
+
+def validate_container_api_base_url(raw: object) -> str:
+    """Valida el endpoint interno fijo del modo contenedor P19.
+
+    No parsea ni acepta entrada del usuario: el unico valor aceptado es
+    la constante ``UI_CONTAINER_API_BASE_URL`` (servicio Compose interno
+    ``api``). Cualquier otro valor se rechaza; esta funcion nunca
+    produce un host distinto de la constante cerrada.
+    """
+    if raw != UI_CONTAINER_API_BASE_URL:
+        raise ValueError(_UI_URL_MESSAGES["host"])
+    return UI_CONTAINER_API_BASE_URL
 
 
 def validate_local_identifier(raw: object, kind: str) -> str:
@@ -793,16 +807,26 @@ def fetch_recommendation(
     player: str,
     opponent: str,
     as_of: str,
+    *,
+    container_mode: bool = False,
 ) -> UIOutcome:
     """UNICA peticion POST por llamada; cero reintentos, contrato cerrado.
 
     ``client`` ofrece el contexto ``stream`` de httpx. El limite se
     aplica incrementalmente a los bytes decodificados antes de parsear
     JSON. La URL, el cuerpo y el timeout exactos son parte del contrato;
-    ningun error interno se propaga al mensaje publico.
+    ningun error interno se propaga al mensaje publico. ``container_mode``
+    (por defecto ``False``, comportamiento local identico al previo a
+    P19) selecciona el validador de URL cerrado: en modo contenedor solo
+    se acepta la constante fija del servicio interno, nunca una URL
+    proveniente del usuario.
     """
     try:
-        validated_base_url = validate_api_base_url(base_url)
+        validated_base_url = (
+            validate_container_api_base_url(base_url)
+            if container_mode
+            else validate_api_base_url(base_url)
+        )
         validated_player = validate_local_identifier(player, "player")
         validated_opponent = validate_local_identifier(opponent, "opponent")
         validated_date = validate_local_date(as_of)
@@ -1070,7 +1094,8 @@ def render_public_recommendation(model: PublicRecommendation) -> None:
     )
 
 
-def _form_inputs() -> tuple[str, str, date, str]:
+def form_inputs() -> tuple[str, str, date, str]:
+    """Formulario compartido jugador/rival/fecha (reutilizable por P19)."""
     st.subheader("Consultar una orientación")
     with st.form("recommendation_form", clear_on_submit=True):
         player = st.text_input(
@@ -1122,7 +1147,7 @@ def main() -> None:
         base_url = validate_api_base_url(raw_url)
     except ValueError:
         base_url = None
-    player_raw, opponent_raw, chosen_date, submitted = _form_inputs()
+    player_raw, opponent_raw, chosen_date, submitted = form_inputs()
     if not submitted:
         st.caption(
             "Introduce jugador, rival y fecha y pulsa "
@@ -1179,6 +1204,7 @@ if __name__ == "__main__":
 __all__ = (
     "UI_API_BASE_DEFAULT",
     "UI_API_HOST_ALLOWED",
+    "UI_CONTAINER_API_BASE_URL",
     "UI_MAX_IDENTIFIER_LENGTH",
     "UI_MAX_PORT",
     "UI_MAX_RESPONSE_BYTES",
@@ -1192,11 +1218,13 @@ __all__ = (
     "PublicRecommendation",
     "UIOutcome",
     "fetch_recommendation",
+    "form_inputs",
     "main",
     "outcome_kind_label",
     "parse_public_recommendation",
     "render_public_recommendation",
     "validate_api_base_url",
+    "validate_container_api_base_url",
     "validate_local_date",
     "validate_local_identifier",
 )

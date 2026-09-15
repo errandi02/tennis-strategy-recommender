@@ -762,6 +762,82 @@ def test_bytes_p11_y_etag_permanecen_exactos(snapshot_path):
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+# G. Modo contenedor P19: host cerrado por variable de entorno dedicada  #
+# --------------------------------------------------------------------- #
+
+
+def test_modo_local_por_defecto_no_cambia_host(monkeypatch):
+    monkeypatch.delenv(runtime.RUNTIME_MODE_ENV, raising=False)
+    assert runtime._resolve_serve_host("127.0.0.1") == "127.0.0.1"
+
+
+def test_modo_contenedor_exacto_activa_0_0_0_0(monkeypatch):
+    monkeypatch.setenv(
+        runtime.RUNTIME_MODE_ENV, runtime.RUNTIME_CONTAINER_MODE_VALUE
+    )
+    assert runtime._resolve_serve_host("127.0.0.1") == runtime.RUNTIME_CONTAINER_HOST
+    assert runtime.RUNTIME_CONTAINER_HOST == "0.0.0.0"
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    ["", "true", "1", "CONTAINER", " container", "container ", "0.0.0.0", "local"],
+)
+def test_modo_contenedor_valor_manipulado_falla_cerrado(bad_value, monkeypatch):
+    monkeypatch.setenv(runtime.RUNTIME_MODE_ENV, bad_value)
+    with pytest.raises(runtime.RuntimeModeContractError) as exc_info:
+        runtime._resolve_serve_host("127.0.0.1")
+    # El mensaje cerrado es una constante estatica: nunca interpola el
+    # valor manipulado, asi que no puede filtrarlo.
+    assert str(exc_info.value) == _MESSAGES["runtime_mode_rejected"]
+
+
+def test_main_modo_contenedor_activo_entrega_0_0_0_0_a_uvicorn(
+    snapshot_path, load_factory, uvicorn_spy, monkeypatch
+):
+    _configure_snapshot(monkeypatch, snapshot_path)
+    monkeypatch.setenv(
+        runtime.RUNTIME_MODE_ENV, runtime.RUNTIME_CONTAINER_MODE_VALUE
+    )
+    code = runtime.main([])
+    assert code == 0
+    assert load_factory.calls == [str(snapshot_path)]
+    args, kwargs = uvicorn_spy[0]
+    assert kwargs["host"] == "0.0.0.0"
+    assert kwargs["port"] == runtime.RUNTIME_DEFAULT_PORT
+
+
+def test_main_modo_contenedor_invalido_falla_antes_de_cargar_snapshot(
+    snapshot_path, load_factory, uvicorn_spy, monkeypatch
+):
+    _configure_snapshot(monkeypatch, snapshot_path)
+    monkeypatch.setenv(runtime.RUNTIME_MODE_ENV, "manipulado")
+    with pytest.raises(SystemExit) as exc_info:
+        runtime.main([])
+    assert exc_info.value.code == _MESSAGES["runtime_mode_rejected"]
+    # Falla ANTES de intentar cargar el snapshot P13: cero I/O, cero servidor.
+    assert load_factory.calls == []
+    assert uvicorn_spy == []
+    assert "manipulado" not in str(exc_info.value.code)
+    assert runtime.RUNTIME_MODE_ENV not in str(exc_info.value.code)
+
+
+def test_cli_host_0_0_0_0_sigue_rechazado_incluso_en_modo_contenedor(
+    snapshot_path, load_factory, uvicorn_spy, monkeypatch
+):
+    """El usuario nunca puede introducir el host via CLI, ni en modo P19."""
+    _configure_snapshot(monkeypatch, snapshot_path)
+    monkeypatch.setenv(
+        runtime.RUNTIME_MODE_ENV, runtime.RUNTIME_CONTAINER_MODE_VALUE
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        runtime.main(["--host", "0.0.0.0"])
+    assert exc_info.value.code == 2
+    assert load_factory.calls == []
+    assert uvicorn_spy == []
+
+
 def test_concurrency_sintetica_segura(snapshot_path, load_factory):
     app = runtime.build_app_from_snapshot(str(snapshot_path))
     outcomes: list[tuple[int, bytes]] = []

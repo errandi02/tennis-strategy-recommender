@@ -1,0 +1,10 @@
+# Dependencias de runtime minimas del servicio api (P17/P19).
+# Mismos pines que requirements.txt (no se actualiza ninguna version).
+# Justificacion: fastapi/pydantic definen y validan el contrato HTTP
+# P12; uvicorn sirve la app ASGI. El runtime P17/P12 y sus dependencias
+# transitivas (src/recommender, src/analysis, src/parsing) son stdlib
+# puro: no importan pandas, pyarrow, scipy ni statsmodels, por lo que
+# no se incluyen aqui.
+fastapi==0.141.1
+pydantic==2.13.5
+uvicorn==0.53.0
