@@ -658,17 +658,15 @@ def _wait_for_health(port: int, process: subprocess.Popen) -> bytes:
     raise AssertionError("P17 no alcanzo healthz dentro del plazo sintetico")
 
 
-def _wait_until_port_is_free(port: int) -> None:
+def _wait_until_no_listener(port: int) -> None:
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-            try:
-                listener.bind((runtime.RUNTIME_DEFAULT_HOST, port))
-            except OSError:
-                time.sleep(0.05)
-            else:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+            client.settimeout(0.25)
+            if client.connect_ex((runtime.RUNTIME_DEFAULT_HOST, port)) != 0:
                 return
-    raise AssertionError("El puerto loopback siguio ocupado tras apagar P17")
+        time.sleep(0.05)
+    raise AssertionError("P17 mantuvo un listener loopback tras apagarse")
 
 
 @pytest.mark.skipif(
@@ -731,7 +729,7 @@ def test_subprocess_posix_apaga_limpio_sin_ruta_ni_residuos(
     assert str(snapshot_path) not in combined
     assert _PLAYER not in combined
     assert _OPPONENT not in combined
-    _wait_until_port_is_free(port)
+    _wait_until_no_listener(port)
     with pytest.raises(ProcessLookupError):
         os.kill(process.pid, 0)
 
