@@ -190,6 +190,8 @@ def test_p15_segunda_autorizacion_tras_diagnostico_de_interrupcion():
 def test_p10_permanece_bloqueado_historicamente():
     assert p10.REAL_EXECUTION_AUTHORIZED is False
     assert p10.FURTHER_REAL_EXECUTION_AUTHORIZED is False
+    assert p10.AUTOMATIC_RETRY is False
+    assert p13.MAX_SNAPSHOT_BYTES == 268_435_456
 
 
 def test_runner_bloqueado_lanza_preflight_sin_efectos(
@@ -311,12 +313,15 @@ def test_cli_valida_rutas_antes_de_llegar_a_ejecutar(
 _SNAPSHOT_FINAL = (
     "/Users/omar.errandi/Documents/tactical-recommendations-private-v1.json"
 )
-_LOG_FINAL = "/Users/omar.errandi/Documents/p16-snapshot-performance.json"
+_FIRST_LOG_FINAL = "/Users/omar.errandi/Documents/p16-snapshot-performance.json"
+_LOG_FINAL = "/Users/omar.errandi/Documents/p16-snapshot-performance-2.json"
 
 
 def test_rutas_definitivas_cuentan_con_el_contrato_p15():
     assert p15._is_posix_private_path(_SNAPSHOT_FINAL)
+    assert p15._is_posix_private_path(_FIRST_LOG_FINAL)
     assert p15._is_posix_private_path(_LOG_FINAL)
+    assert _LOG_FINAL != _FIRST_LOG_FINAL
 
 
 def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
