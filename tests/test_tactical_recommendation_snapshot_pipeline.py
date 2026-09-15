@@ -1,15 +1,15 @@
 """P15: orquestador offline P10 -> records -> P14 -> P13 (P16).
 
-Cubre: autorizacion de ejecucion real (habilitada en ``True`` para
-exactamente una ejecucion manual unica, sin reintento automatico y
-con metadata contractual de razon/politica/cierre), contrato de rutas
+Cubre: cierre de la autorizacion tras el primer intento real
+interrumpido, sin reintento automatico y con metadata contractual de
+razon/politica/cierre, contrato de rutas
 privadas, flujo autorizado simulado solo con ejecuciones sinteticas
 inyectadas (nunca la fuente real), proyeccion target -> record,
 sellado P10, fallos e interrupciones, performance log cerrado sin
 PII, invariantes de arquitectura por AST y equivalencia con la
 generacion P14 directa. Cero ejecucion real: por defecto
-``REAL_EXECUTION_AUTHORIZED`` esta en ``True`` (autorizacion P16 para
-una unica ejecucion manual) y ningun test ejecuta la ruta real: todo
+``REAL_EXECUTION_AUTHORIZED`` esta en ``False`` y ningun test ejecuta
+la ruta real: todo
 flujo prueba usa runners/generadores sinteticos inyectados, y los
 tests de puerta la cierran con monkeypatch temporal. Ningun test
 invoca al lector real de la fuente.
@@ -21,6 +21,8 @@ import ast
 import dataclasses
 import json
 import os
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -142,25 +144,26 @@ def _clone(source, **overrides) -> object:
 # --------------------------------------------------------------------- #
 
 
-def test_p15_autorizado_para_unica_ejecucion_manual():
-    # P16: capacidad P13 validada; unica puerta en True con la razon
-    # activa exacta para una unica ejecucion manual privada.
-    assert p15.REAL_EXECUTION_AUTHORIZED is True
+def test_p15_cerrado_tras_primer_intento_interrumpido():
+    assert p15.REAL_EXECUTION_AUTHORIZED is False
     assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
-        "single_manual_private_snapshot_generation_authorized_after_preflight"
+        "real_snapshot_interrupted_pending_diagnosis_reauthorization"
+    )
+    assert (
+        p15.REAL_EXECUTION_BLOCK_REASON_CODE
+        == p15.REAL_EXECUTION_AUTHORIZATION_REASON
     )
     assert p15.AUTOMATIC_RETRY is False
     assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (
         "single_manual_execution_without_automatic_retry"
     )
-    # Todavia no se ha realizado ninguna ejecucion real.
-    assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 0
+    assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 1
     assert p15.COMPLETED_REAL_EXECUTIONS == 0
-    assert p15.INTERRUPTED_REAL_EXECUTIONS == 0
+    assert p15.INTERRUPTED_REAL_EXECUTIONS == 1
     assert p15.AUTOMATIC_RETRIES_PERFORMED == 0
-    # Cierre contractual obligatorio tras la ejecucion eventual.
+    # Cierre contractual posterior al intento interrumpido.
     assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
-    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
+    assert "autorizacion permanece cerrada" in p15.POST_EXECUTION_CLOSURE_RULE
     # El codigo de bloqueo se conserva en el conjunto cerrado: la
     # puerta sigue cerrandose si la constante vuelve a False.
     assert p15.REAL_EXECUTION_BLOCK_REASON_CODE in p15.PIPELINE_REASON_CODES
@@ -330,7 +333,7 @@ def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
     assert exc_info.value.code == 2
 
 
-def test_ast_autorizacion_unica_constante_true_sin_ambiente():
+def test_ast_autorizacion_unica_constante_false_sin_ambiente():
     tree = ast.parse(_MODULE_SOURCE)
     assignments = []
     for node in ast.walk(tree):
@@ -348,9 +351,7 @@ def test_ast_autorizacion_unica_constante_true_sin_ambiente():
                     assignments.append(node)
     assert len(assignments) == 1
     value = assignments[0].value
-    # P16: capacidad validada; unica puerta en True para una unica
-    # ejecucion manual, sin acceso a variables de entorno.
-    assert isinstance(value, ast.Constant) and value.value is True
+    assert isinstance(value, ast.Constant) and value.value is False
     environment = [
         node
         for node in ast.walk(tree)
@@ -848,25 +849,61 @@ def test_cli_autorizada_mapea_codigos_de_salida(
             "run_tactical_recommendation_snapshot_pipeline",
             lambda _s, _l: interrupted,
         )
-        with pytest.raises(SystemExit) as exc_info:
-            p15.main(arguments)
-        assert exc_info.value.code == 130
+        assert p15.main(arguments) == 130
     with monkeypatch.context() as ctx:
         ctx.setattr(
             p15,
             "run_tactical_recommendation_snapshot_pipeline",
             lambda _s, _l: failed,
         )
-        with pytest.raises(SystemExit) as exc_info:
-            p15.main(arguments)
-        assert exc_info.value.code == 1
+        assert p15.main(arguments) == 1
     with monkeypatch.context() as ctx:
         ctx.setattr(
             p15,
             "run_tactical_recommendation_snapshot_pipeline",
             lambda _s, _l: completed,
         )
-        assert p15.main(arguments) is None
+        assert p15.main(arguments) == 0
+
+
+def test_subprocess_interrumpido_sale_130_sin_traceback_rutas_ni_publicacion(
+    external_dir,
+):
+    snapshot = external_dir / "private-secret-snapshot.json"
+    performance_log = external_dir / "private-secret-performance.json"
+    script = "\n".join(
+        (
+            "from pathlib import Path",
+            "import sys",
+            "import src.analysis.tactical_recommendation_snapshot_pipeline as p15",
+            "p15.REAL_EXECUTION_AUTHORIZED = True",
+            "p15._parse_private_paths = lambda snapshot, log: (Path(snapshot), Path(log))",
+            "def interrupted(*args, **kwargs):",
+            "    raise KeyboardInterrupt()",
+            "p15.run_tactical_recommendation_snapshot_pipeline = interrupted",
+            "code = p15.main(('--snapshot-path', sys.argv[1], '--performance-log', sys.argv[2]))",
+            "raise SystemExit(code) from None",
+        )
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(snapshot), str(performance_log)],
+        cwd=_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 130
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+    assert "Traceback" not in output
+    assert "KeyboardInterrupt" not in output
+    assert "SystemExit" not in output
+    assert str(_ROOT) not in output
+    assert str(snapshot) not in output
+    assert str(performance_log) not in output
+    assert not snapshot.exists()
+    assert not performance_log.exists()
 
 
 # --------------------------------------------------------------------- #

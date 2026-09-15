@@ -8,13 +8,13 @@ Prepara la integracion offline completa sin ejecutar datos reales:
 
 P16 valido la capacidad del snapshot P13 (``MAX_SNAPSHOT_BYTES`` =
 256 MiB con la base representativa de 3.610 entradas cubierta con
-margen) y habilito ``REAL_EXECUTION_AUTHORIZED`` en ``True`` para
-exactamente una ejecucion manual privada. La politica permanece
+margen). El primer intento real fue interrumpido manualmente durante
+``p10_pipeline`` y la autorizacion queda cerrada, pendiente de
+diagnostico y reautorizacion explicita. La politica permanece
 ``single_manual_execution_without_automatic_retry`` y
-``AUTOMATIC_RETRY`` en ``False``. Tras la ejecucion eventual
-(completada, fallida o interrumpida), un commit posterior debera fijar
-``REAL_EXECUTION_AUTHORIZED = False``; el proceso no edita su propia
-constante. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
+``AUTOMATIC_RETRY`` en ``False``. No existe reintento autorizado; el
+proceso no edita su propia constante. Sin ejecucion, esta capa nunca
+lee Parquet/CSV, nunca
 accede a ``data/``, nunca escribe en el repositorio y no genera el
 snapshot real. La autorizacion de la
 generacion del snapshot la posee exclusivamente P15. La ruta
@@ -81,40 +81,37 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# Autorizacion unica y manual: habilitada para exactamente una
-# ejecucion real privada, tras la validacion de capacidad P13
-# (MAX_SNAPSHOT_BYTES = 256 MiB; base representativa de 3.610
-# entradas cubierta con margen; constantes de capacidad documentadas
-# en el modulo P13). Tras la ejecucion (completada, fallida o
-# interrumpida) un commit posterior debe fijar la constante en False.
-# No existe bypass por entorno, flag CLI, reintento ni segunda
-# constante.
-REAL_EXECUTION_AUTHORIZED: Final = True
+# El primer intento real privado fue interrumpido durante p10_pipeline.
+# La autorizacion queda cerrada hasta un diagnostico y una eventual
+# reautorizacion manual explicita. No existe bypass por entorno, flag
+# CLI, reintento ni segunda constante.
+REAL_EXECUTION_AUTHORIZED: Final = False
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
-    "single_manual_private_snapshot_generation_authorized_after_preflight"
+    "real_snapshot_interrupted_pending_diagnosis_reauthorization"
 )
 REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
-    "real_snapshot_generation_blocked_pending_capacity_validation"
+    "real_snapshot_interrupted_pending_diagnosis_reauthorization"
 )
 AUTOMATIC_RETRY: Final = False
 SINGLE_MANUAL_EXECUTION_POLICY: Final = (
     "single_manual_execution_without_automatic_retry"
 )
-# Historial real P15 (invariante contractual en el momento de P16).
-PREVIOUS_REAL_P15_ATTEMPTS: Final = 0
+# Historial real P15 tras el primer intento P16.
+PREVIOUS_REAL_P15_ATTEMPTS: Final = 1
 COMPLETED_REAL_EXECUTIONS: Final = 0
-INTERRUPTED_REAL_EXECUTIONS: Final = 0
+INTERRUPTED_REAL_EXECUTIONS: Final = 1
 AUTOMATIC_RETRIES_PERFORMED: Final = 0
 POST_EXECUTION_CLOSURE_RULE: Final = (
-    "Tras la ejecucion autorizada (completada, fallida o interrumpida), "
-    "un commit posterior debe fijar REAL_EXECUTION_AUTHORIZED = False; "
+    "El primer intento real P15 fue interrumpido y la autorizacion permanece "
+    "cerrada, pendiente de diagnostico y reautorizacion manual explicita; "
     "P10 conserva permanentemente REAL_EXECUTION_AUTHORIZED = False y "
     "FURTHER_REAL_EXECUTION_AUTHORIZED = False. El proceso no edita su "
     "propia constante; cero reintento automatico."
 )
 REAL_SNAPSHOT_EXECUTION_BLOCK_REASON: Final = (
-    "Ejecucion real bloqueada: capacidad P13 pendiente de validacion "
-    "(real_snapshot_generation_blocked_pending_capacity_validation)."
+    "Ejecucion real bloqueada: intento interrumpido pendiente de diagnostico "
+    "y reautorizacion "
+    "(real_snapshot_interrupted_pending_diagnosis_reauthorization)."
 )
 
 PIPELINE_STAGES: Final = (
@@ -150,7 +147,7 @@ PIPELINE_RECONCILIATION_KEYS: Final = (
 
 PIPELINE_REASON_CODES: Final = frozenset(
     {
-        "real_snapshot_generation_blocked_pending_capacity_validation",
+        "real_snapshot_interrupted_pending_diagnosis_reauthorization",
         "path_contract_violation",
         "p10_pipeline_execution_failed",
         "p10_result_not_pipeline_result",
@@ -167,8 +164,8 @@ PIPELINE_REASON_CODES: Final = frozenset(
 
 _ERROR_MESSAGES: Final = MappingProxyType(
     {
-        "real_snapshot_generation_blocked_pending_capacity_validation": (
-            "P15 bloqueado: capacidad P13 pendiente de validacion."
+        "real_snapshot_interrupted_pending_diagnosis_reauthorization": (
+            "P15 bloqueado: intento interrumpido pendiente de diagnostico."
         ),
         "path_contract_violation": (
             "Ruta privada fuera del contrato P15 (no se revela)."
@@ -1115,7 +1112,7 @@ def validate_snapshot_pipeline_paths_cli(
     return _parse_private_paths(snapshot_raw, log_raw)
 
 
-def main(argv: tuple[str, ...] | None = None) -> None:
+def main(argv: tuple[str, ...] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "P15: unica ejecucion manual autorizada del snapshot "
@@ -1138,15 +1135,16 @@ def main(argv: tuple[str, ...] | None = None) -> None:
             snapshot_path, performance_log
         )
     except KeyboardInterrupt:
-        raise SystemExit(130) from None
+        return 130
     if result.execution_status == "interrupted":
-        raise SystemExit(130)
+        return 130
     if result.execution_status != "completed":
-        raise SystemExit(1)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main()) from None
 
 
 __all__ = (
