@@ -1,17 +1,16 @@
 """P15: orquestador offline P10 -> records -> P14 -> P13 (P16).
 
-Cubre: segunda y unica autorizacion real manual tras el diagnostico
-de la interrupcion del primer intento, sin reintento automatico y con
-metadata contractual de razon/politica/historial/cierre (1 intento
-previo, 1 interrupcion, 0 completadas, 0 reintentos), contrato de
+Cubre: cierre contractual tras dos ejecuciones reales manuales: la
+primera interrumpida y la segunda completada, sin reintento automatico
+y con metadata agregada de razon/politica/historial/cierre (2 intentos,
+1 interrupcion, 1 completado, 0 reintentos), contrato de
 rutas privadas, flujo autorizado simulado solo con ejecuciones
 sinteticas inyectadas (nunca la fuente real), proyeccion target ->
 record, sellado P10, fallos e interrupciones, salida 130 sin
 traceback, performance log cerrado sin PII, invariantes de
 arquitectura por AST y equivalencia con la generacion P14 directa.
-Cero ejecucion real: por defecto ``REAL_EXECUTION_AUTHORIZED`` esta
-en ``True`` (autorizacion P16 para la segunda unica ejecucion
-manual) y ningun test ejecuta la ruta real: todo flujo prueba usa
+Cero ejecucion real desde tests: ``REAL_EXECUTION_AUTHORIZED`` esta
+en ``False`` definitivamente y todo flujo de prueba usa
 runners/generadores sinteticos inyectados, y los tests de puerta la
 cierran con monkeypatch temporal. Ningun test invoca al lector real
 de la fuente.
@@ -146,37 +145,34 @@ def _clone(source, **overrides) -> object:
 # --------------------------------------------------------------------- #
 
 
-def test_p15_segunda_autorizacion_tras_diagnostico_de_interrupcion():
-    # P16: segunda y unica ejecucion manual autorizada tras el
-    # diagnostico de la interrupcion del primer intento.
-    assert p15.REAL_EXECUTION_AUTHORIZED is True
+def test_p15_cerrado_tras_segunda_ejecucion_completada():
+    assert p15.REAL_EXECUTION_AUTHORIZED is False
     assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
-        "second_manual_private_snapshot_generation_authorized_after_interruption_diagnosis"
+        "real_snapshot_generation_completed_no_further_execution_authorized"
     )
-    # La razon de autorizacion es metadata contractual, no un codigo
-    # de error: no se anade al conjunto cerrado de reason codes. La
-    # puerta defensiva conserva su codigo cerrado.
     assert (
         p15.REAL_EXECUTION_BLOCK_REASON_CODE
-        != p15.REAL_EXECUTION_AUTHORIZATION_REASON
+        == p15.REAL_EXECUTION_AUTHORIZATION_REASON
     )
     assert (
         p15.REAL_EXECUTION_AUTHORIZATION_REASON
-        not in p15.PIPELINE_REASON_CODES
+        in p15.PIPELINE_REASON_CODES
     )
     assert p15.AUTOMATIC_RETRY is False
     assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (
         "single_manual_execution_without_automatic_retry"
     )
-    # Historial real del primer intento, conservado sin modificar.
-    assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 1
-    assert p15.COMPLETED_REAL_EXECUTIONS == 0
+    assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 2
+    assert p15.COMPLETED_REAL_EXECUTIONS == 1
     assert p15.INTERRUPTED_REAL_EXECUTIONS == 1
     assert p15.AUTOMATIC_RETRIES_PERFORMED == 0
-    # Cierre contractual obligatorio tras la segunda ejecucion.
     assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
-    assert "segunda ejecucion autorizada" in p15.POST_EXECUTION_CLOSURE_RULE
-    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
+    assert "segunda ejecucion real termino correctamente" in (
+        p15.POST_EXECUTION_CLOSURE_RULE
+    )
+    assert "REAL_EXECUTION_AUTHORIZED permanece en False" in (
+        p15.POST_EXECUTION_CLOSURE_RULE
+    )
     # El codigo de bloqueo se conserva en el conjunto cerrado: la
     # puerta sigue cerrandose si la constante vuelve a False.
     assert p15.REAL_EXECUTION_BLOCK_REASON_CODE in p15.PIPELINE_REASON_CODES
@@ -192,6 +188,34 @@ def test_p10_permanece_bloqueado_historicamente():
     assert p10.FURTHER_REAL_EXECUTION_AUTHORIZED is False
     assert p10.AUTOMATIC_RETRY is False
     assert p13.MAX_SNAPSHOT_BYTES == 268_435_456
+
+
+def test_resultado_real_agregado_y_capacidad_reconciliados():
+    assert p15.SECOND_REAL_EXECUTION_STATUS == "completed"
+    assert p15.SECOND_REAL_EXECUTION_ELAPSED_SECONDS == 5554.413477875001
+    assert p15.SECOND_REAL_EXECUTION_OPERATION_COUNTS == (
+        ("p10_executions", 1),
+        ("targets_projected", 3610),
+        ("generation_calls", 1),
+        ("persistence_calls", 1),
+        ("verification_calls", 1),
+    )
+    assert p15.PERSISTED_SNAPSHOT_ENTRIES == 3610
+    assert p15.PERSISTED_SNAPSHOT_BYTES == 256_962_392
+    assert p15.PERSISTED_SNAPSHOT_CAPACITY_MARGIN_BYTES == 11_473_064
+    assert (
+        p13.MAX_SNAPSHOT_BYTES - p15.PERSISTED_SNAPSHOT_BYTES
+        == p15.PERSISTED_SNAPSHOT_CAPACITY_MARGIN_BYTES
+    )
+    assert p15.PERSISTED_SNAPSHOT_BYTES < p13.MAX_SNAPSHOT_BYTES
+    assert (
+        100
+        * p15.PERSISTED_SNAPSHOT_CAPACITY_MARGIN_BYTES
+        / p13.MAX_SNAPSHOT_BYTES
+    ) == pytest.approx(4.274049401283264)
+    assert p15.PERSISTED_SNAPSHOT_SHA256 == (
+        "C2C453A4FF0A89CCB8A895C77637D724F5DF06C2835527DC267A93026122EFB0"
+    )
 
 
 def test_runner_bloqueado_lanza_preflight_sin_efectos(
@@ -340,7 +364,7 @@ def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
     assert exc_info.value.code == 2
 
 
-def test_ast_autorizacion_unica_constante_true_sin_ambiente():
+def test_ast_autorizacion_unica_constante_false_sin_ambiente():
     tree = ast.parse(_MODULE_SOURCE)
     assignments = []
     for node in ast.walk(tree):
@@ -358,9 +382,7 @@ def test_ast_autorizacion_unica_constante_true_sin_ambiente():
                     assignments.append(node)
     assert len(assignments) == 1
     value = assignments[0].value
-    # P16: segunda y unica ejecucion manual en True, sin acceso a
-    # variables de entorno.
-    assert isinstance(value, ast.Constant) and value.value is True
+    assert isinstance(value, ast.Constant) and value.value is False
     environment = [
         node
         for node in ast.walk(tree)

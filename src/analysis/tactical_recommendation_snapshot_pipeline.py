@@ -10,13 +10,12 @@ P16 valido la capacidad del snapshot P13 (``MAX_SNAPSHOT_BYTES`` =
 256 MiB con la base representativa de 3.610 entradas cubierta con
 margen). El primer intento real fue interrumpido manualmente durante
 ``p10_pipeline`` (sin snapshot, sin reintentos, log cerrado con
-status ``interrupted``); tras el diagnostico se autoriza una segunda
-y unica ejecucion manual privada. La politica permanece
+status ``interrupted``); la segunda ejecucion termino correctamente,
+persistio y verifico 3.610 entradas y cerro toda autorizacion futura.
+La politica permanece
 ``single_manual_execution_without_automatic_retry`` y
-``AUTOMATIC_RETRY`` en ``False``. Tras la ejecucion eventual
-(completada, fallida o interrumpida), un commit posterior debera
-fijar ``REAL_EXECUTION_AUTHORIZED = False``; el proceso no edita su
-propia constante. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
+``AUTOMATIC_RETRY`` en ``False``. No existe ninguna ejecucion adicional
+autorizada. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
 accede a ``data/``, nunca escribe en el repositorio y no genera el
 snapshot real. La autorizacion de la
 generacion del snapshot la posee exclusivamente P15. La ruta
@@ -83,41 +82,54 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# Segunda y unica ejecucion manual privada: autorizada tras el
-# diagnostico de la interrupcion del primer intento (log cerrado con
-# status interrupted durante p10_pipeline; sin snapshot; cero
-# reintentos). Tras la ejecucion (completada, fallida o interrumpida)
-# un commit posterior debe fijar la constante en False. No existe
-# bypass por entorno, flag CLI, fuente alternativa, reintento ni
-# segunda constante.
-REAL_EXECUTION_AUTHORIZED: Final = True
+# El primer intento real fue interrumpido y el segundo termino
+# correctamente. La autorizacion queda cerrada definitivamente: no
+# existe bypass por entorno, flag CLI, fuente alternativa, reintento
+# ni segunda constante.
+REAL_EXECUTION_AUTHORIZED: Final = False
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
-    "second_manual_private_snapshot_generation_authorized_after_interruption_diagnosis"
+    "real_snapshot_generation_completed_no_further_execution_authorized"
 )
 REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
-    "real_snapshot_interrupted_pending_diagnosis_reauthorization"
+    "real_snapshot_generation_completed_no_further_execution_authorized"
 )
 AUTOMATIC_RETRY: Final = False
 SINGLE_MANUAL_EXECUTION_POLICY: Final = (
     "single_manual_execution_without_automatic_retry"
 )
-# Historial real P15 tras el primer intento P16.
-PREVIOUS_REAL_P15_ATTEMPTS: Final = 1
-COMPLETED_REAL_EXECUTIONS: Final = 0
+# Historial real cerrado de P16: primer intento interrumpido, segundo
+# completado, sin reintentos automaticos.
+PREVIOUS_REAL_P15_ATTEMPTS: Final = 2
+COMPLETED_REAL_EXECUTIONS: Final = 1
 INTERRUPTED_REAL_EXECUTIONS: Final = 1
 AUTOMATIC_RETRIES_PERFORMED: Final = 0
+SECOND_REAL_EXECUTION_STATUS: Final = "completed"
+SECOND_REAL_EXECUTION_ELAPSED_SECONDS: Final = 5554.413477875001
+SECOND_REAL_EXECUTION_OPERATION_COUNTS: Final = (
+    ("p10_executions", 1),
+    ("targets_projected", 3610),
+    ("generation_calls", 1),
+    ("persistence_calls", 1),
+    ("verification_calls", 1),
+)
+PERSISTED_SNAPSHOT_ENTRIES: Final = 3610
+PERSISTED_SNAPSHOT_BYTES: Final = 256_962_392
+PERSISTED_SNAPSHOT_CAPACITY_MARGIN_BYTES: Final = 11_473_064
+PERSISTED_SNAPSHOT_SHA256: Final = (
+    "C2C453A4FF0A89CCB8A895C77637D724F5DF06C2835527DC267A93026122EFB0"
+)
 POST_EXECUTION_CLOSURE_RULE: Final = (
-    "Tras la segunda ejecucion autorizada (completada, fallida o "
-    "interrumpida), un commit posterior debe fijar "
-    "REAL_EXECUTION_AUTHORIZED = False; P10 conserva permanentemente "
+    "La segunda ejecucion real termino correctamente y "
+    "REAL_EXECUTION_AUTHORIZED permanece en False; P10 conserva "
+    "permanentemente "
     "REAL_EXECUTION_AUTHORIZED = False y FURTHER_REAL_EXECUTION_AUTHORIZED "
-    "= False. El proceso no edita su propia constante; cero reintento "
-    "automatico."
+    "= False. No existe ninguna ejecucion adicional autorizada y hubo cero "
+    "reintentos automaticos."
 )
 REAL_SNAPSHOT_EXECUTION_BLOCK_REASON: Final = (
-    "Ejecucion real bloqueada: intento interrumpido pendiente de diagnostico "
-    "y reautorizacion "
-    "(real_snapshot_interrupted_pending_diagnosis_reauthorization)."
+    "Ejecucion real bloqueada: snapshot generado y verificado; no existe "
+    "autorizacion adicional "
+    "(real_snapshot_generation_completed_no_further_execution_authorized)."
 )
 
 PIPELINE_STAGES: Final = (
@@ -153,7 +165,7 @@ PIPELINE_RECONCILIATION_KEYS: Final = (
 
 PIPELINE_REASON_CODES: Final = frozenset(
     {
-        "real_snapshot_interrupted_pending_diagnosis_reauthorization",
+        "real_snapshot_generation_completed_no_further_execution_authorized",
         "path_contract_violation",
         "p10_pipeline_execution_failed",
         "p10_result_not_pipeline_result",
@@ -170,8 +182,8 @@ PIPELINE_REASON_CODES: Final = frozenset(
 
 _ERROR_MESSAGES: Final = MappingProxyType(
     {
-        "real_snapshot_interrupted_pending_diagnosis_reauthorization": (
-            "P15 bloqueado: intento interrumpido pendiente de diagnostico."
+        "real_snapshot_generation_completed_no_further_execution_authorized": (
+            "P15 bloqueado: snapshot completado sin ejecuciones adicionales."
         ),
         "path_contract_violation": (
             "Ruta privada fuera del contrato P15 (no se revela)."
@@ -1168,10 +1180,17 @@ __all__ = (
     "PIPELINE_STAGES",
     "POST_EXECUTION_CLOSURE_RULE",
     "PREVIOUS_REAL_P15_ATTEMPTS",
+    "PERSISTED_SNAPSHOT_BYTES",
+    "PERSISTED_SNAPSHOT_CAPACITY_MARGIN_BYTES",
+    "PERSISTED_SNAPSHOT_ENTRIES",
+    "PERSISTED_SNAPSHOT_SHA256",
     "REAL_EXECUTION_AUTHORIZED",
     "REAL_EXECUTION_AUTHORIZATION_REASON",
     "REAL_EXECUTION_BLOCK_REASON_CODE",
     "REAL_SNAPSHOT_EXECUTION_BLOCK_REASON",
+    "SECOND_REAL_EXECUTION_ELAPSED_SECONDS",
+    "SECOND_REAL_EXECUTION_OPERATION_COUNTS",
+    "SECOND_REAL_EXECUTION_STATUS",
     "SINGLE_MANUAL_EXECUTION_POLICY",
     "TacticalRecommendationSnapshotPipelineError",
     "TacticalRecommendationSnapshotPipelineResult",
