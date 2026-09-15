@@ -1,0 +1,108 @@
+{
+  "authorized": false,
+  "automatic_retries_performed": 0,
+  "base_commit": "0b7c9c610bee91b57abd108db8fe3c97f7988980",
+  "configuration": {
+    "combination": "equal_weight_executor_opponent",
+    "encoder_policy": "component_only",
+    "evidence_scope": "global_only",
+    "fallback_policy": "none_single_scope_global_only",
+    "global_cross_pattern_ranking": false,
+    "minimum_distinct_matches": 5,
+    "minimum_labeled_activations": 50,
+    "patterns": [
+      "P02",
+      "P04",
+      "P05",
+      "P06"
+    ],
+    "ranking_scope": "independent_within_pattern",
+    "requested_top_k": 3,
+    "score_formula": "combined_rate = 0.5 * executor_success_rate + 0.5 * opponent_allowed_success_rate"
+  },
+  "contract_name": "final_evaluation_preflight",
+  "contract_version": "1.0.0",
+  "expected_population": {
+    "expected_test_matches": 1531,
+    "expected_test_orientations": 3062
+  },
+  "fingerprints": {
+    "configuration_fingerprint": "8FE1CD456ADDC4602341A71E6711E343996C109E926E4E7162A392567742FB2F",
+    "specification_fingerprint": "91E03B42D7F4496CCD4910DE7F682DBB22DCBA2692A40A010157BBF6900817CC"
+  },
+  "interrupted_real_test_evaluations": 0,
+  "metrics": {
+    "denominator_rules": {
+      "abstained_options": "always_counted_in_orientation_or_pattern_denominator_of_origin_never_excluded_never_treated_as_failure",
+      "brier_score_vs_server_won_point_label": "denominator_is_count_of_P02_ranked_options_with_a_valid_server_won_point_label_in_the_evaluated_match_only; missing_label_excludes_from_denominator_not_zero_fill",
+      "incompatible_or_upstream_error_results": "counted_in_a_separate_error_bucket_over_the_full_population_excluded_from_all_performance_metric_denominators",
+      "log_loss_vs_server_won_point_label": "same_denominator_as_brier_score_vs_server_won_point_label",
+      "missing_label": "marks_the_specific_metric_not_computable_for_that_row_excluded_from_that_metric_denominator_only",
+      "orientation_coverage_by_status": "denominator_is_expected_test_orientations_fixed_3062; every orientation belongs to exactly one of available/partially_available/not_available",
+      "partially_available_orientations": "counted_in_orientation_coverage_denominator_excluded_from_pattern_scored_vs_abstained_aggregation_when_the_pattern_itself_is_not_available_for_that_orientation",
+      "pattern_coverage_scored_vs_abstained": "denominator_is_total_candidate_count_per_pattern_from_P11_card.total_options; never recomputed independently",
+      "population_baseline_comparison": "denominator_is_same_P02_ranked_population_as_brier_score_vs_server_won_point_label_for_a_fair_delta",
+      "ties": "tie_group_members_counted_once_each_via_existing_tie_group_and_tie_group_count_fields_never_broken_arbitrarily_never_double_counted",
+      "year_2026_partial": "reported_as_its_own_bucket_2026_partial_through_2026-05-21_never_pooled_with_2024_or_2025_as_if_complete"
+    },
+    "primary_all_patterns": [
+      "orientation_coverage_by_status",
+      "pattern_coverage_scored_vs_abstained",
+      "reconciliation_by_year_within_test"
+    ],
+    "primary_p02_only": [
+      "brier_score_vs_server_won_point_label",
+      "log_loss_vs_server_won_point_label",
+      "population_baseline_comparison"
+    ],
+    "secondary_all_patterns": [
+      "wilson_interval_width_distribution",
+      "rank_and_tie_distribution",
+      "abstention_reason_code_distribution",
+      "coverage_by_surface_and_period"
+    ],
+    "secondary_p02_only": [
+      "descriptive_calibration_bins"
+    ]
+  },
+  "no_identities": true,
+  "no_real_metrics_observed": true,
+  "no_target_level_data": true,
+  "previous_real_test_evaluations": 0,
+  "rules": {
+    "abstention_rules": [
+      "both_perspectives_must_be_available",
+      "rates_and_wilson_bounds_must_be_present",
+      "no_imputation_or_partial_score",
+      "abstained_candidates_counted_in_denominator_never_dropped"
+    ],
+    "failure_rules": [
+      "upstream_contract_violation_counted_as_error_bucket_excluded_from_performance_denominators",
+      "missing_label_marks_metric_not_computable_not_zero_not_one",
+      "partial_2026_reported_separately_never_pooled_as_complete_year"
+    ],
+    "forbidden_actions": [
+      "select_new_evidence_policy_or_scope",
+      "change_minimum_thresholds",
+      "recalibrate_or_retrain_after_observing_test",
+      "select_metrics_post_hoc_for_favorable_outcome",
+      "declare_causal_effect",
+      "convert_abstention_to_success_or_failure_without_prior_definition",
+      "repeat_or_partially_repeat_the_evaluation",
+      "modify_model_or_policy_after_observing_any_test_result"
+    ],
+    "no_post_hoc_modification_rule": "model_policy_thresholds_and_metric_selection_are_frozen_before_authorization_and_must_not_change_after_any_test_result_is_observed_for_any_reason",
+    "single_evaluation_rule": "exactly_one_authorized_real_evaluation_run_per_protocol_ever_no_repeats_no_partial_reruns"
+  },
+  "status": "preflight_only",
+  "temporality": {
+    "primary_history_update_policy": "update_after_complete_date",
+    "primary_temporal_protocol": "rolling_origin",
+    "protocols_share_population": true,
+    "sensitivity_history_update_policy": "frozen_at_2023-12-31",
+    "sensitivity_temporal_protocol": "frozen",
+    "test_end": "2026-05-21",
+    "test_start": "2024-01-01"
+  },
+  "test_evaluation_runs": 0
+}

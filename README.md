@@ -174,6 +174,46 @@ límites de memoria/CPU/procesos, y red interna dedicada
 La documentación local de P17/P18 (ejecución nativa sin Docker) se
 mantiene íntegra en las secciones anteriores.
 
+## Preflight de evaluación final del test sellado 2024-2026 (P20)
+
+El test 2024-2026 **permanece sellado** (1.531 partidos, `2024-01-01`
+a `2026-05-21`; fuente única de verdad:
+`src/analysis/chronological_validation.py`). P20 congela, antes de
+leer una sola fila del test, la especificación completa de una futura
+evaluación real —módulo
+[`src/analysis/final_sealed_evaluation.py`](src/analysis/final_sealed_evaluation.py)—
+sin ejecutarla:
+
+- Configuración congelada (idéntica a la ya productiva en P10-P12):
+  `component_only`, `evidence_scope=global_only`, mínimos `50/5`,
+  combinación `50/50`, `top_k=3`, sin ranking cruzado entre patrones.
+- Dos protocolos temporales sobre la **misma** población de test (no
+  poblaciones independientes): `rolling_origin` (principal, idéntico
+  al ya validado en 2020-2023) y `frozen` al `2023-12-31`
+  (sensibilidad secundaria).
+- Métricas primarias/secundarias congeladas, con denominadores
+  explícitos para abstenciones, `partially_available`, labels
+  ausentes, empates, errores upstream y el año 2026 parcial. Brier/
+  log-loss/baseline poblacional quedan **limitados a P02** (único
+  patrón con precedente de código para ese scoring); P04/P05/P06 se
+  limitan a cobertura/disponibilidad, ya calculable desde el contrato
+  público P11.
+- **Autorización**: `REAL_TEST_EVALUATION_AUTHORIZED: Final = False`.
+  Puerta única, sin variable de entorno, sin flag CLI, sin `--force`,
+  sin segunda puerta ni reintento automático. Contadores, todos en
+  cero: `PREVIOUS_REAL_TEST_EVALUATIONS`,
+  `COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`,
+  `AUTOMATIC_RETRIES_PERFORMED`.
+- Manifiesto de preflight versionado, sin resultados reales:
+  [`reports/final_evaluation_preflight.json`](reports/final_evaluation_preflight.json)
+  (`status: preflight_only`, `authorized: false`,
+  `test_evaluation_runs: 0`).
+
+**P21 será una decisión humana separada y explícita** para autorizar
+la evaluación real; P20 no la habilita. Ninguna política, threshold,
+scoring o modelo puede ajustarse después de observar cualquier
+resultado del test, bajo ningún protocolo.
+
 ## Primer hito
 
 Demostrar empíricamente la viabilidad del Match Charting Project:
