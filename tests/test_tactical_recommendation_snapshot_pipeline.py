@@ -1,18 +1,20 @@
 """P15: orquestador offline P10 -> records -> P14 -> P13 (P16).
 
-Cubre: cierre de la autorizacion tras el primer intento real
-interrumpido, sin reintento automatico y con metadata contractual de
-razon/politica/cierre, contrato de rutas
-privadas, flujo autorizado simulado solo con ejecuciones sinteticas
-inyectadas (nunca la fuente real), proyeccion target -> record,
-sellado P10, fallos e interrupciones, performance log cerrado sin
-PII, invariantes de arquitectura por AST y equivalencia con la
-generacion P14 directa. Cero ejecucion real: por defecto
-``REAL_EXECUTION_AUTHORIZED`` esta en ``False`` y ningun test ejecuta
-la ruta real: todo
-flujo prueba usa runners/generadores sinteticos inyectados, y los
-tests de puerta la cierran con monkeypatch temporal. Ningun test
-invoca al lector real de la fuente.
+Cubre: segunda y unica autorizacion real manual tras el diagnostico
+de la interrupcion del primer intento, sin reintento automatico y con
+metadata contractual de razon/politica/historial/cierre (1 intento
+previo, 1 interrupcion, 0 completadas, 0 reintentos), contrato de
+rutas privadas, flujo autorizado simulado solo con ejecuciones
+sinteticas inyectadas (nunca la fuente real), proyeccion target ->
+record, sellado P10, fallos e interrupciones, salida 130 sin
+traceback, performance log cerrado sin PII, invariantes de
+arquitectura por AST y equivalencia con la generacion P14 directa.
+Cero ejecucion real: por defecto ``REAL_EXECUTION_AUTHORIZED`` esta
+en ``True`` (autorizacion P16 para la segunda unica ejecucion
+manual) y ningun test ejecuta la ruta real: todo flujo prueba usa
+runners/generadores sinteticos inyectados, y los tests de puerta la
+cierran con monkeypatch temporal. Ningun test invoca al lector real
+de la fuente.
 """
 
 from __future__ import annotations
@@ -144,26 +146,37 @@ def _clone(source, **overrides) -> object:
 # --------------------------------------------------------------------- #
 
 
-def test_p15_cerrado_tras_primer_intento_interrumpido():
-    assert p15.REAL_EXECUTION_AUTHORIZED is False
+def test_p15_segunda_autorizacion_tras_diagnostico_de_interrupcion():
+    # P16: segunda y unica ejecucion manual autorizada tras el
+    # diagnostico de la interrupcion del primer intento.
+    assert p15.REAL_EXECUTION_AUTHORIZED is True
     assert p15.REAL_EXECUTION_AUTHORIZATION_REASON == (
-        "real_snapshot_interrupted_pending_diagnosis_reauthorization"
+        "second_manual_private_snapshot_generation_authorized_after_interruption_diagnosis"
     )
+    # La razon de autorizacion es metadata contractual, no un codigo
+    # de error: no se anade al conjunto cerrado de reason codes. La
+    # puerta defensiva conserva su codigo cerrado.
     assert (
         p15.REAL_EXECUTION_BLOCK_REASON_CODE
-        == p15.REAL_EXECUTION_AUTHORIZATION_REASON
+        != p15.REAL_EXECUTION_AUTHORIZATION_REASON
+    )
+    assert (
+        p15.REAL_EXECUTION_AUTHORIZATION_REASON
+        not in p15.PIPELINE_REASON_CODES
     )
     assert p15.AUTOMATIC_RETRY is False
     assert p15.SINGLE_MANUAL_EXECUTION_POLICY == (
         "single_manual_execution_without_automatic_retry"
     )
+    # Historial real del primer intento, conservado sin modificar.
     assert p15.PREVIOUS_REAL_P15_ATTEMPTS == 1
     assert p15.COMPLETED_REAL_EXECUTIONS == 0
     assert p15.INTERRUPTED_REAL_EXECUTIONS == 1
     assert p15.AUTOMATIC_RETRIES_PERFORMED == 0
-    # Cierre contractual posterior al intento interrumpido.
+    # Cierre contractual obligatorio tras la segunda ejecucion.
     assert isinstance(p15.POST_EXECUTION_CLOSURE_RULE, str)
-    assert "autorizacion permanece cerrada" in p15.POST_EXECUTION_CLOSURE_RULE
+    assert "segunda ejecucion autorizada" in p15.POST_EXECUTION_CLOSURE_RULE
+    assert "REAL_EXECUTION_AUTHORIZED = False" in p15.POST_EXECUTION_CLOSURE_RULE
     # El codigo de bloqueo se conserva en el conjunto cerrado: la
     # puerta sigue cerrandose si la constante vuelve a False.
     assert p15.REAL_EXECUTION_BLOCK_REASON_CODE in p15.PIPELINE_REASON_CODES
@@ -322,7 +335,7 @@ def test_cli_no_ofrece_banderas_de_autorizacion(authorized, external_dir):
     assert exc_info.value.code == 2
 
 
-def test_ast_autorizacion_unica_constante_false_sin_ambiente():
+def test_ast_autorizacion_unica_constante_true_sin_ambiente():
     tree = ast.parse(_MODULE_SOURCE)
     assignments = []
     for node in ast.walk(tree):
@@ -340,7 +353,9 @@ def test_ast_autorizacion_unica_constante_false_sin_ambiente():
                     assignments.append(node)
     assert len(assignments) == 1
     value = assignments[0].value
-    assert isinstance(value, ast.Constant) and value.value is False
+    # P16: segunda y unica ejecucion manual en True, sin acceso a
+    # variables de entorno.
+    assert isinstance(value, ast.Constant) and value.value is True
     environment = [
         node
         for node in ast.walk(tree)

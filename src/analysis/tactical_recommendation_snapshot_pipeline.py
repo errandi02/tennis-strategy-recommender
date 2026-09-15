@@ -9,12 +9,14 @@ Prepara la integracion offline completa sin ejecutar datos reales:
 P16 valido la capacidad del snapshot P13 (``MAX_SNAPSHOT_BYTES`` =
 256 MiB con la base representativa de 3.610 entradas cubierta con
 margen). El primer intento real fue interrumpido manualmente durante
-``p10_pipeline`` y la autorizacion queda cerrada, pendiente de
-diagnostico y reautorizacion explicita. La politica permanece
+``p10_pipeline`` (sin snapshot, sin reintentos, log cerrado con
+status ``interrupted``); tras el diagnostico se autoriza una segunda
+y unica ejecucion manual privada. La politica permanece
 ``single_manual_execution_without_automatic_retry`` y
-``AUTOMATIC_RETRY`` en ``False``. No existe reintento autorizado; el
-proceso no edita su propia constante. Sin ejecucion, esta capa nunca
-lee Parquet/CSV, nunca
+``AUTOMATIC_RETRY`` en ``False``. Tras la ejecucion eventual
+(completada, fallida o interrumpida), un commit posterior debera
+fijar ``REAL_EXECUTION_AUTHORIZED = False``; el proceso no edita su
+propia constante. Sin ejecucion, esta capa nunca lee Parquet/CSV, nunca
 accede a ``data/``, nunca escribe en el repositorio y no genera el
 snapshot real. La autorizacion de la
 generacion del snapshot la posee exclusivamente P15. La ruta
@@ -81,13 +83,16 @@ PIPELINE_ANALYSIS_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_CONTRACT_NAME: Final = "tactical_recommendation_snapshot_pipeline"
 PIPELINE_SCHEMA_VERSION: Final = "1.0.0"
 
-# El primer intento real privado fue interrumpido durante p10_pipeline.
-# La autorizacion queda cerrada hasta un diagnostico y una eventual
-# reautorizacion manual explicita. No existe bypass por entorno, flag
-# CLI, reintento ni segunda constante.
-REAL_EXECUTION_AUTHORIZED: Final = False
+# Segunda y unica ejecucion manual privada: autorizada tras el
+# diagnostico de la interrupcion del primer intento (log cerrado con
+# status interrupted durante p10_pipeline; sin snapshot; cero
+# reintentos). Tras la ejecucion (completada, fallida o interrumpida)
+# un commit posterior debe fijar la constante en False. No existe
+# bypass por entorno, flag CLI, fuente alternativa, reintento ni
+# segunda constante.
+REAL_EXECUTION_AUTHORIZED: Final = True
 REAL_EXECUTION_AUTHORIZATION_REASON: Final = (
-    "real_snapshot_interrupted_pending_diagnosis_reauthorization"
+    "second_manual_private_snapshot_generation_authorized_after_interruption_diagnosis"
 )
 REAL_EXECUTION_BLOCK_REASON_CODE: Final = (
     "real_snapshot_interrupted_pending_diagnosis_reauthorization"
@@ -102,11 +107,12 @@ COMPLETED_REAL_EXECUTIONS: Final = 0
 INTERRUPTED_REAL_EXECUTIONS: Final = 1
 AUTOMATIC_RETRIES_PERFORMED: Final = 0
 POST_EXECUTION_CLOSURE_RULE: Final = (
-    "El primer intento real P15 fue interrumpido y la autorizacion permanece "
-    "cerrada, pendiente de diagnostico y reautorizacion manual explicita; "
-    "P10 conserva permanentemente REAL_EXECUTION_AUTHORIZED = False y "
-    "FURTHER_REAL_EXECUTION_AUTHORIZED = False. El proceso no edita su "
-    "propia constante; cero reintento automatico."
+    "Tras la segunda ejecucion autorizada (completada, fallida o "
+    "interrumpida), un commit posterior debe fijar "
+    "REAL_EXECUTION_AUTHORIZED = False; P10 conserva permanentemente "
+    "REAL_EXECUTION_AUTHORIZED = False y FURTHER_REAL_EXECUTION_AUTHORIZED "
+    "= False. El proceso no edita su propia constante; cero reintento "
+    "automatico."
 )
 REAL_SNAPSHOT_EXECUTION_BLOCK_REASON: Final = (
     "Ejecucion real bloqueada: intento interrumpido pendiente de diagnostico "
