@@ -62,6 +62,41 @@ shell intermedio:
 kill -TERM "$(cat "$HOME/Documents/p17-runtime.pid")"
 ```
 
+## Interfaz local (P18)
+
+Interfaz Streamlit local, en español y sin estado, que consume
+exclusivamente la API P17 por HTTP sobre loopback. No importa P10-P16,
+no carga el snapshot, no lee Parquet/CSV ni reports, no conoce la ruta
+del snapshot y no inicia Uvicorn: todo pasa por la API corriendo aparte.
+Arranque (P17 primero, en su terminal, y luego la UI):
+
+```bash
+# Terminal 1: API P17 (ver seccion P17 para la ruta del snapshot)
+export TENNIS_TACTICAL_SNAPSHOT_PATH='/ruta/externa/snapshot-p13.json'
+python -m src.api.runtime --host 127.0.0.1 --port 8000
+
+# Terminal 2: interfaz (una vez que la API responde en /healthz)
+streamlit run src/ui/streamlit_app.py
+```
+
+La URL del servicio se ajusta en el expander de la interfaz (por
+defecto `http://127.0.0.1:8000`): solo se aceptan URLs loopback
+seguras — esquema `http` unico, host `127.0.0.1` exacto, puerto
+`1..65535` estricto, sin credenciales, path, query ni fragmentos.
+Jugador, rival y fecha se validan localmente con el mismo contrato
+cerrado que la API; si jugador y rival son iguales, la UI no envia la
+solicitud. Cada pulsacion del boton realiza UNA unica peticion al
+servicio (timeout cliente cerrado de 30 s, cero reintentos
+automaticos). Los status de error y los fallos de red local (servicio
+no corriendo, timeout, respuesta fuera de contrato) producen mensajes
+cerrados en espanol: sin rutas, sin request IDs, sin tracebacks ni
+datos internos. La ficha se renderiza con sus tarjetas por patron,
+opciones, evidencia (activaciones etiquetadas, exitos/fallos, partidos
+distintos, tasa e intervalo descriptivo), limitaciones y el aviso de
+que se trata de evidencia historica observacional, no de causalidad ni
+de garantia de exito; si el sistema abstiene, la UI lo muestra sin
+inventar recomendaciones.
+
 ## Primer hito
 
 Demostrar empíricamente la viabilidad del Match Charting Project:
