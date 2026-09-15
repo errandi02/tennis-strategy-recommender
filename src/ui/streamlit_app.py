@@ -29,7 +29,8 @@ Contrato cerrado del modulo:
   son evidencia historica observacional; si el sistema abstiene o la
   orientación no está disponible, la UI lo muestra sin inventar
   recomendaciones.
-- Ejecucion: ``streamlit run src/ui/streamlit_app.py`` (el guard
+- Ejecucion: ``streamlit run src/ui/streamlit_app.py
+  --browser.gatherUsageStats false`` (el guard
   ``__main__`` lanza la UI); importar el modulo no inicia Streamlit ni
   red.
 """
@@ -37,9 +38,11 @@ Contrato cerrado del modulo:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from types import MappingProxyType
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -47,12 +50,15 @@ import httpx
 
 import streamlit as st
 
+from src.recommender import tactical_recommendation_contract as p11
+
 
 UI_API_BASE_DEFAULT: Final = "http://127.0.0.1:8000"
 UI_API_HOST_ALLOWED: Final = "127.0.0.1"
 UI_MIN_PORT: Final = 1
 UI_MAX_PORT: Final = 65535
 UI_REQUEST_TIMEOUT_SECONDS: Final = 30.0
+UI_MAX_RESPONSE_BYTES: Final = 1024 * 1024
 UI_RECOMMENDATIONS_PATH: Final = "/api/v1/recommendations"
 UI_MAX_IDENTIFIER_LENGTH: Final = 64
 UI_IDENTIFIER_CONTROL: Final = frozenset(
@@ -395,6 +401,17 @@ def _require_keys(value: object, keys: frozenset[str], label: str) -> dict:
     return value  # type: ignore[return-value]
 
 
+def _json_object_without_duplicate_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("objeto JSON con clave duplicada")
+        result[key] = value
+    return result
+
+
 def _require_str(value: object, label: str) -> str:
     if type(value) is not str or not value:
         raise PublicContractError(f"{label} fuera de contrato.")
@@ -613,9 +630,131 @@ def _parse_card(value: object, index: int) -> PublicPatternCard:
     )
 
 
+def _p11_evidence(value: object, label: str) -> p11.PublicEvidenceComponent:
+    record = _require_keys(value, _EVIDENCE_KEYS, label)
+    return p11.PublicEvidenceComponent(**record)
+
+
+def _p11_option(value: object, index: int) -> p11.TacticalRecommendationOption:
+    record = _require_keys(value, _OPTION_KEYS, f"opcion[{index}]")
+    envelope = record["descriptive_uncertainty_envelope"]
+    return p11.TacticalRecommendationOption(
+        pattern_id=record["pattern_id"],
+        category=record["category"],
+        tactical_opportunity=record["tactical_opportunity"],
+        actor=record["actor"],
+        status=record["status"],
+        reason_codes=tuple(record["reason_codes"]),
+        executor_evidence=_p11_evidence(
+            record["executor_evidence"], f"opcion[{index}].executor_evidence"
+        ),
+        opponent_allowed_evidence=_p11_evidence(
+            record["opponent_allowed_evidence"],
+            f"opcion[{index}].opponent_allowed_evidence",
+        ),
+        score_formula=record["score_formula"],
+        score=record["score"],
+        descriptive_uncertainty_envelope=(
+            None if envelope is None else tuple(envelope)
+        ),
+        rank_position=record["rank_position"],
+        tie_group=record["tie_group"],
+        canonical_explanation=record["canonical_explanation"],
+    )
+
+
+def _p11_card(value: object, index: int) -> p11.TacticalPatternCard:
+    record = _require_keys(value, _CARD_KEYS, f"tarjeta[{index}]")
+    options_raw = record["options"]
+    if type(options_raw) is not list:
+        raise PublicContractError(f"tarjeta[{index}].options fuera de contrato.")
+    options = tuple(
+        _p11_option(item, number) for number, item in enumerate(options_raw)
+    )
+    by_category = {item.category: item for item in options}
+
+    def selected(field: str) -> tuple[p11.TacticalRecommendationOption, ...]:
+        values = record[field]
+        if type(values) is not list or any(type(item) is not str for item in values):
+            raise PublicContractError(f"tarjeta[{index}].{field} fuera de contrato.")
+        try:
+            return tuple(by_category[item] for item in values)
+        except KeyError:
+            raise PublicContractError(
+                f"tarjeta[{index}].{field} fuera de contrato."
+            ) from None
+
+    reconciliations = record["reconciliations"]
+    if type(reconciliations) is not dict:
+        raise PublicContractError(
+            f"tarjeta[{index}].reconciliations fuera de contrato."
+        )
+    return p11.TacticalPatternCard(
+        pattern_id=record["pattern_id"],
+        actor=record["actor"],
+        tactical_opportunity=record["tactical_opportunity"],
+        status=record["status"],
+        status_reason_codes=tuple(record["status_reason_codes"]),
+        categories=tuple(record["categories"]),
+        options=options,
+        ranked_options=selected("ranked_options"),
+        top_options=selected("top_options"),
+        abstained_options=selected("abstained_options"),
+        requested_top_k=record["requested_top_k"],
+        effective_top_k=record["effective_top_k"],
+        tie_expanded=record["tie_expanded"],
+        tie_group_count=record["tie_group_count"],
+        total_options=record["total_options"],
+        scored_options=record["scored_options"],
+        abstained_options_count=record["abstained_options_count"],
+        reconciliations=MappingProxyType(dict(reconciliations)),
+    )
+
+
+def _validate_exact_p11_payload(record: dict) -> None:
+    cards_raw = record["cards"]
+    if type(cards_raw) is not list:
+        raise PublicContractError("cards debe ser una lista.")
+    cards = tuple(_p11_card(item, index) for index, item in enumerate(cards_raw))
+    reconciliations = record["reconciliations"]
+    if type(reconciliations) is not dict:
+        raise PublicContractError("respuesta.reconciliations fuera de contrato.")
+    response = p11.TacticalRecommendationResponse(
+        contract_version=record["contract_version"],
+        status=record["status"],
+        status_reason_codes=tuple(record["status_reason_codes"]),
+        methodology=record["methodology"],
+        combination=record["combination"],
+        score_formula=record["score_formula"],
+        uncertainty_method=record["uncertainty_method"],
+        executor_weight=record["executor_weight"],
+        opponent_weight=record["opponent_weight"],
+        encoder_policy=record["encoder_policy"],
+        evidence_scope=record["evidence_scope"],
+        minimum_labeled_activations=record["minimum_labeled_activations"],
+        minimum_distinct_matches=record["minimum_distinct_matches"],
+        requested_top_k=record["requested_top_k"],
+        ranking_scope=record["ranking_scope"],
+        global_cross_pattern_ranking=record["global_cross_pattern_ranking"],
+        cards=cards,
+        limitations=tuple(record["limitations"]),
+        reconciliations=MappingProxyType(dict(reconciliations)),
+        fingerprint=record["fingerprint"],
+    )
+    p11.validate_public_tactical_recommendation(response)
+
+
 def parse_public_recommendation(payload: object) -> PublicRecommendation:
     """Parse estricto del cuerpo 200 contra el contrato público P11."""
     record = _require_keys(payload, _RESPONSE_KEYS, "respuesta")
+    try:
+        _validate_exact_p11_payload(record)
+    except PublicContractError:
+        raise
+    except Exception:
+        raise PublicContractError(
+            "respuesta fuera del contrato publico P11."
+        ) from None
     status = record["status"]
     if status not in _RESPONSE_STATUSES:
         raise PublicContractError("respuesta.status fuera de contrato.")
@@ -657,21 +796,84 @@ def fetch_recommendation(
 ) -> UIOutcome:
     """UNICA peticion POST por llamada; cero reintentos, contrato cerrado.
 
-    ``client`` es un objeto con ``post(url, *, json, timeout)`` (el
-    cliente httpx por defecto en el arranque real; en tests se inyecta
-    un doble). La URL, el cuerpo y el timeout exactos son parte del
-    contrato; ningun error interno se propaga al mensaje publico.
+    ``client`` ofrece el contexto ``stream`` de httpx. El limite se
+    aplica incrementalmente a los bytes decodificados antes de parsear
+    JSON. La URL, el cuerpo y el timeout exactos son parte del contrato;
+    ningun error interno se propaga al mensaje publico.
     """
-    url = f"{base_url}{UI_RECOMMENDATIONS_PATH}"
+    try:
+        validated_base_url = validate_api_base_url(base_url)
+        validated_player = validate_local_identifier(player, "player")
+        validated_opponent = validate_local_identifier(opponent, "opponent")
+        validated_date = validate_local_date(as_of)
+        if validated_player == validated_opponent:
+            raise _IdentifierContractError("orientacion fuera de contrato")
+    except (ValueError, _IdentifierContractError):
+        return UIOutcome(
+            _UI_LOCAL_OUTCOMES["incompatible_response"],
+            _UI_LOCAL_MESSAGES["unexpected"],
+        )
+    url = f"{validated_base_url}{UI_RECOMMENDATIONS_PATH}"
     body = {
-        "player_id": player,
-        "opponent_id": opponent,
-        "as_of_date": as_of,
+        "player_id": validated_player,
+        "opponent_id": validated_opponent,
+        "as_of_date": validated_date,
     }
     try:
-        response = client.post(
-            url, json=body, timeout=UI_REQUEST_TIMEOUT_SECONDS
-        )
+        with client.stream(
+            "POST",
+            url,
+            json=body,
+            timeout=UI_REQUEST_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as response:
+            status_code = response.status_code
+            if type(status_code) is not int or isinstance(status_code, bool):
+                return UIOutcome(
+                    _UI_LOCAL_OUTCOMES["incompatible_response"],
+                    _UI_LOCAL_MESSAGES["incompatible_response"],
+                )
+            if status_code != 200:
+                message = _UI_STATUS_MESSAGES.get(
+                    status_code, _UI_LOCAL_MESSAGES["unexpected"]
+                )
+                return UIOutcome(
+                    _UI_LOCAL_OUTCOMES["status_error"],
+                    message,
+                    status_code=status_code,
+                )
+            content_length = response.headers.get("content-length")
+            if content_length is not None:
+                if not content_length.isascii() or not content_length.isdecimal():
+                    return UIOutcome(
+                        _UI_LOCAL_OUTCOMES["incompatible_response"],
+                        _UI_LOCAL_MESSAGES["incompatible_response"],
+                        status_code=status_code,
+                    )
+                if int(content_length) > UI_MAX_RESPONSE_BYTES:
+                    return UIOutcome(
+                        _UI_LOCAL_OUTCOMES["incompatible_response"],
+                        _UI_LOCAL_MESSAGES["incompatible_response"],
+                        status_code=status_code,
+                    )
+            chunks: list[bytes] = []
+            received = 0
+            for chunk in response.iter_bytes():
+                if type(chunk) is not bytes:
+                    return UIOutcome(
+                        _UI_LOCAL_OUTCOMES["incompatible_response"],
+                        _UI_LOCAL_MESSAGES["incompatible_response"],
+                        status_code=status_code,
+                    )
+                received += len(chunk)
+                if received > UI_MAX_RESPONSE_BYTES:
+                    return UIOutcome(
+                        _UI_LOCAL_OUTCOMES["incompatible_response"],
+                        _UI_LOCAL_MESSAGES["incompatible_response"],
+                        status_code=status_code,
+                    )
+                chunks.append(chunk)
+            content = b"".join(chunks)
     except httpx.TimeoutException:
         return UIOutcome(
             _UI_LOCAL_OUTCOMES["timeout"], _UI_LOCAL_MESSAGES["timeout"]
@@ -685,21 +887,10 @@ def fetch_recommendation(
             _UI_LOCAL_OUTCOMES["incompatible_response"],
             _UI_LOCAL_MESSAGES["unexpected"],
         )
-    status_code = response.status_code
-    if type(status_code) is not int or isinstance(status_code, bool):
-        return UIOutcome(
-            _UI_LOCAL_OUTCOMES["incompatible_response"],
-            _UI_LOCAL_MESSAGES["incompatible_response"],
-        )
-    if status_code != 200:
-        message = _UI_STATUS_MESSAGES.get(
-            status_code, _UI_LOCAL_MESSAGES["unexpected"]
-        )
-        return UIOutcome(
-            _UI_LOCAL_OUTCOMES["status_error"], message, status_code=status_code
-        )
     try:
-        payload = json.loads(response.content)
+        payload = json.loads(
+            content, object_pairs_hook=_json_object_without_duplicate_keys
+        )
     except (ValueError, TypeError, UnicodeDecodeError, AttributeError):
         return UIOutcome(
             _UI_LOCAL_OUTCOMES["incompatible_response"],
@@ -761,11 +952,11 @@ def _opportunity_label(pattern_id: str, tactical_opportunity: str) -> str:
 
 def _evidence_table(evidence: PublicEvidenceComponent) -> None:
     st.markdown(
-        "| Métrica | Valor |"
-        "|---|---|"
-        f"| Activaciones etiquetadas | {evidence.labeled_activations} |"
-        f"| Éxitos / fallos | {evidence.successes} / {evidence.failures} |"
-        f"| Partidos distintas | {evidence.distinct_matches} |"
+        "| Métrica | Valor |\n"
+        "|---|---|\n"
+        f"| Activaciones etiquetadas | {evidence.labeled_activations} |\n"
+        f"| Éxitos / fallos | {evidence.successes} / {evidence.failures} |\n"
+        f"| Partidos distintos | {evidence.distinct_matches} |"
     )
     if evidence.success_rate is not None:
         lower = (
@@ -881,23 +1072,34 @@ def render_public_recommendation(model: PublicRecommendation) -> None:
 
 def _form_inputs() -> tuple[str, str, date, str]:
     st.subheader("Consultar una orientación")
-    with st.form("recommendation_form", clear_on_submit=False):
+    with st.form("recommendation_form", clear_on_submit=True):
         player = st.text_input(
             "Jugador",
+            key="recommendation_player",
             max_chars=UI_MAX_IDENTIFIER_LENGTH,
             help="1-64 caracteres; sin espacios al final, sin '/','\\','://','..','~' ni caracteres de control.",
         )
         opponent = st.text_input(
             "Rival",
+            key="recommendation_opponent",
             max_chars=UI_MAX_IDENTIFIER_LENGTH,
             help="Mismas reglas que jugador; debe ser diferente del jugador.",
         )
-        chosen_date = st.date_input("Fecha (as of)", value=date.today())
-        submitted = st.form_submit_button("Solicitar recomendación")
+        chosen_date = st.date_input(
+            "Fecha (as of)", value=date.today(), key="recommendation_as_of_date"
+        )
+        submitted = st.form_submit_button(
+            "Solicitar recomendación", key="recommendation_submit"
+        )
     return player, opponent, chosen_date, "" if not submitted else "sent"
 
 
 def main() -> None:
+    # HTTPX/httpcore registran la URL a nivel INFO/DEBUG. Esta UI local
+    # desactiva ambos canales antes de construir el cliente para que el
+    # puerto configurado no se propague al logging anfitrion.
+    logging.getLogger("httpx").disabled = True
+    logging.getLogger("httpcore").disabled = True
     st.set_page_config(
         page_title="Recomendador táctico (local)",
         layout="wide",
@@ -913,6 +1115,7 @@ def main() -> None:
         raw_url = st.text_input(
             "URL del servicio local",
             value=UI_API_BASE_DEFAULT,
+            key="recommendation_api_base_url",
             help="Solo http://127.0.0.1[puerto] (1-65535), sin credenciales, path, query ni fragmentos.",
         )
     try:
@@ -949,7 +1152,12 @@ def main() -> None:
     except _IdentifierContractError as error:
         st.error(str(error))
         return
-    client = httpx.Client(timeout=UI_REQUEST_TIMEOUT_SECONDS)
+    client = httpx.Client(
+        timeout=UI_REQUEST_TIMEOUT_SECONDS,
+        follow_redirects=False,
+        trust_env=False,
+        limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
+    )
     try:
         with st.spinner("Consultando el servicio local…"):
             outcome = fetch_recommendation(
@@ -973,6 +1181,7 @@ __all__ = (
     "UI_API_HOST_ALLOWED",
     "UI_MAX_IDENTIFIER_LENGTH",
     "UI_MAX_PORT",
+    "UI_MAX_RESPONSE_BYTES",
     "UI_MIN_PORT",
     "UI_RECOMMENDATIONS_PATH",
     "UI_REQUEST_TIMEOUT_SECONDS",

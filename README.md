@@ -76,7 +76,7 @@ export TENNIS_TACTICAL_SNAPSHOT_PATH='/ruta/externa/snapshot-p13.json'
 python -m src.api.runtime --host 127.0.0.1 --port 8000
 
 # Terminal 2: interfaz (una vez que la API responde en /healthz)
-streamlit run src/ui/streamlit_app.py
+streamlit run src/ui/streamlit_app.py --browser.gatherUsageStats false
 ```
 
 La URL del servicio se ajusta en el expander de la interfaz (por

@@ -1,8 +1,8 @@
 """Tests sinteticos P18: UI Streamlit local sobre la API HTTP P17.
 
 Verifican: import sin efectos (AST + subprocess), imports cerrados P18
-(sin P10-P16, sin pandas/pyarrow/pickle/subprocess/uvicorn, sin
-``src.*``), ausencia de referencia a la variable de entorno de ruta del
+(solo el contrato publico P11; sin P10-P16/P13 ni
+pandas/pyarrow/pickle/subprocess/uvicorn), ausencia de referencia a la variable de entorno de ruta del
 snapshot, sin session_state/cache/analiticas, URL loopback segura
 (esquema http unico, host 127.0.0.1 exacto, puerto 1..65535 estricto,
 sin credenciales/path/query/fragmento) con mensajes cerrados,
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import copy
+from functools import lru_cache
 import json
 import logging
 import os
@@ -34,6 +35,16 @@ import httpx
 import pytest
 
 import src.ui.streamlit_app as ui
+from src.recommender.tactical_recommendation_contract import (
+    PUBLIC_LIMITATIONS,
+    canonical_tactical_recommendation_json,
+)
+from tests.test_tactical_recommendation_contract import (
+    _all_available_specs,
+    _partial_specs,
+    _response,
+    _zero_specs,
+)
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -55,9 +66,30 @@ _SENSITIVE = (
 
 
 class _FakeResponse:
-    def __init__(self, status_code: object, content: object) -> None:
+    def __init__(self, status_code: object, content: object,
+                 headers: dict[str, str] | None = None,
+                 chunks: tuple[object, ...] | None = None) -> None:
         self.status_code = status_code
         self.content = content
+        self.headers = {} if headers is None else headers
+        self._chunks = chunks
+        self.iterated = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        return False
+
+    def iter_bytes(self):
+        self.iterated = True
+        if self._chunks is not None:
+            yield from self._chunks
+            return
+        if type(self.content) is not bytes:
+            yield self.content
+            return
+        yield self.content
 
 
 class _FakeClient:
@@ -65,11 +97,12 @@ class _FakeClient:
                  exc: Exception | None = None) -> None:
         self.response = response
         self.exc = exc
-        self.calls: list[tuple[str, dict, object]] = []
+        self.calls: list[tuple[str, str, dict, object, object]] = []
 
-    def post(self, url: str, *, json: object = None,
-             timeout: object = None) -> _FakeResponse:
-        self.calls.append((url, json, timeout))
+    def stream(self, method: str, url: str, *, json: object = None,
+               timeout: object = None,
+               follow_redirects: object = None) -> _FakeResponse:
+        self.calls.append((method, url, json, timeout, follow_redirects))
         if self.exc is not None:
             raise self.exc
         assert self.response is not None
@@ -166,32 +199,18 @@ def _card(pattern: str = "P02",
     }
 
 
-def _payload(cards: tuple[dict, ...] | None = None,
-             status: str = "available") -> dict:
-    return {
-        "contract_version": "p11",
-        "status": status,
-        "status_reason_codes": [],
-        "methodology": "sintetica",
-        "combination": "w",
-        "score_formula": "weighted",
-        "uncertainty_method": "wilson",
-        "executor_weight": 0.6,
-        "opponent_weight": 0.4,
-        "encoder_policy": "cerrado",
-        "evidence_scope": "global",
-        "minimum_labeled_activations": 50,
-        "minimum_distinct_matches": 5,
-        "requested_top_k": 3,
-        "ranking_scope": "within_pattern",
-        "global_cross_pattern_ranking": False,
-        "cards": list(cards) if cards is not None else [_card()],
-        "limitations": ["Limitacion sintetica publica."],
-        "reconciliations": {
-            key: True for key in ui._RESPONSE_RECONCILIATION_KEYS
-        },
-        "fingerprint": "fp-sintetico",
-    }
+@lru_cache(maxsize=3)
+def _canonical_payload(status: str) -> bytes:
+    specs = {
+        "available": _all_available_specs,
+        "partially_available": _partial_specs,
+        "not_available": _zero_specs,
+    }[status]()
+    return canonical_tactical_recommendation_json(_response(specs))
+
+
+def _payload(status: str = "available") -> dict:
+    return json.loads(_canonical_payload(status))
 
 
 def _fetch_json(payload: dict, status_code: int = 200) -> ui.UIOutcome:
@@ -256,23 +275,31 @@ def test_ast_ui_imports_cerrados() -> None:
         "__future__",
         "__future__.annotations",
         "json",
+        "logging",
         "re",
         "dataclasses",
         "dataclasses.dataclass",
         "datetime",
         "datetime.date",
         "datetime.datetime",
+        "types",
+        "types.MappingProxyType",
         "typing",
         "typing.Final",
         "urllib.parse",
         "urllib.parse.urlsplit",
         "httpx",
         "streamlit",
+        "src.recommender",
+        "src.recommender.tactical_recommendation_contract",
     }
     assert imported <= allowed
-    assert not any(name.startswith("src.") for name in imported), (
-        "La UI P18 no puede importar P10-P16 ni ningun modulo src."
-    )
+    assert {
+        name for name in imported if name.startswith("src.")
+    } <= {
+        "src.recommender",
+        "src.recommender.tactical_recommendation_contract",
+    }
     banned = {"pandas", "pyarrow", "pickle", "subprocess", "uvicorn"}
     overlap = {
         name for name in imported
@@ -345,9 +372,70 @@ def test_ui_fuente_sin_snapshot_ni_estado() -> None:
         "pyarrow",
         "pickle",
         "subprocess",
-        "logging",
     ):
         assert banned not in source, f"Prohibido en la UI: {banned}"
+    assert "trust_env=False" in source
+    assert "max_keepalive_connections=0" in source
+    assert "follow_redirects=False" in source
+    assert 'logging.getLogger("httpx").disabled = True' in source
+    assert 'logging.getLogger("httpcore").disabled = True' in source
+    assert ui.UI_MAX_RESPONSE_BYTES == 1024 * 1024
+
+
+def test_dependencia_y_comando_desactivan_telemetria() -> None:
+    requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert requirements.splitlines().count("streamlit==1.63.0") == 1
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert (
+        "streamlit run src/ui/streamlit_app.py "
+        "--browser.gatherUsageStats false"
+    ) in readme
+
+
+def test_formulario_limpia_identidades_y_usa_claves_estables(monkeypatch) -> None:
+    class _Context:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> bool:
+            return False
+
+    class _StreamlitDouble:
+        def __init__(self) -> None:
+            self.form_call = None
+            self.keys: list[str] = []
+
+        def subheader(self, text: str) -> None:
+            return None
+
+        def form(self, name: str, *, clear_on_submit: bool):
+            self.form_call = (name, clear_on_submit)
+            return _Context()
+
+        def text_input(self, label: str, **kwargs):
+            self.keys.append(kwargs["key"])
+            return "A" if label == "Jugador" else "B"
+
+        def date_input(self, label: str, **kwargs):
+            self.keys.append(kwargs["key"])
+            return kwargs["value"]
+
+        def form_submit_button(self, label: str, **kwargs):
+            self.keys.append(kwargs["key"])
+            return False
+
+    double = _StreamlitDouble()
+    monkeypatch.setattr(ui, "st", double)
+    player, opponent, chosen_date, submitted = ui._form_inputs()
+    assert (player, opponent, submitted) == ("A", "B", "")
+    assert type(chosen_date).__name__ == "date"
+    assert double.form_call == ("recommendation_form", True)
+    assert double.keys == [
+        "recommendation_player",
+        "recommendation_opponent",
+        "recommendation_as_of_date",
+        "recommendation_submit",
+    ]
 
 
 # --------------------------------------------------------------------- #
@@ -503,29 +591,105 @@ def test_fechas_invalidas_mensaje_cerrado(raw: object) -> None:
 def test_parse_payload_valido() -> None:
     model = _model()
     assert model.status == "available"
-    assert model.status_reason_codes == ()
-    assert model.limitations == ("Limitacion sintetica publica.",)
+    assert model.status_reason_codes == (
+        "all_requested_patterns_have_scored_candidates",
+    )
+    assert model.limitations == PUBLIC_LIMITATIONS
+    assert tuple(card.pattern_id for card in model.cards) == (
+        "P02", "P04", "P05", "P06"
+    )
     card = model.cards[0]
     assert card.pattern_id == "P02"
     assert card.actor == "server"
     option = card.options[0]
-    assert option.rank_position == 1
-    assert option.score == 0.66
+    assert option.rank_position == 3
+    assert option.score == 0.325
     assert option.executor_evidence.labeled_activations == 60
-    assert option.executor_evidence.successes == 40
-    assert option.executor_evidence.failures == 20
-    assert option.executor_evidence.distinct_matches == 6
+    assert option.executor_evidence.successes == 15
+    assert option.executor_evidence.failures == 45
+    assert option.executor_evidence.distinct_matches == 10
     assert option.executor_evidence.perspective == "executor"
     assert option.opponent_allowed_evidence.perspective == "opponent_allowed"
     assert (
-        option.descriptive_uncertainty_envelope == (0.5555, 0.7777)
+        option.descriptive_uncertainty_envelope
+        == (0.22173006532469614, 0.4493300829250353)
     )
 
 
 def test_parse_payload_no_disponible() -> None:
     model = _model(status="not_available")
     assert model.status == "not_available"
-    assert model.cards[0].status == "available"
+    assert all(card.status == "not_available" for card in model.cards)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("contract_version", "p11"),
+        ("methodology", "sintetica"),
+        ("combination", "weighted"),
+        ("score_formula", "weighted"),
+        ("uncertainty_method", "wilson"),
+        ("executor_weight", 0.6),
+        ("opponent_weight", 0.4),
+        ("encoder_policy", "profile_only"),
+        ("evidence_scope", "surface"),
+        ("minimum_labeled_activations", 49),
+        ("minimum_distinct_matches", 4),
+        ("requested_top_k", 2),
+        ("ranking_scope", "within_pattern"),
+        ("global_cross_pattern_ranking", True),
+        ("limitations", ["texto no contractual"]),
+        ("fingerprint", "A" * 64),
+    ],
+)
+def test_parse_exige_constantes_y_fingerprint_p11_exactos(
+    field: str, value: object
+) -> None:
+    data = _payload()
+    data[field] = value
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(data)
+
+
+def test_parse_exige_cuatro_tarjetas_en_orden_y_catalogos_exactos() -> None:
+    missing = _payload()
+    del missing["cards"][-1]
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(missing)
+
+    reordered = _payload()
+    reordered["cards"][0], reordered["cards"][1] = (
+        reordered["cards"][1], reordered["cards"][0]
+    )
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(reordered)
+
+    catalog = _payload()
+    catalog["cards"][0]["categories"] = ["4", "6", "5"]
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(catalog)
+
+
+def test_parse_recalcula_wilson_score_y_particiones() -> None:
+    wilson = _payload()
+    wilson["cards"][0]["options"][0]["executor_evidence"][
+        "wilson_lower"
+    ] = 0.0
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(wilson)
+
+    score = _payload()
+    score["cards"][0]["options"][0]["score"] += 0.01
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(score)
+
+    partition = _payload()
+    partition["cards"][0]["ranked_options"] = partition["cards"][0][
+        "ranked_options"
+    ][:-1]
+    with pytest.raises(ui.PublicContractError):
+        ui.parse_public_recommendation(partition)
 
 
 @pytest.mark.parametrize(
@@ -788,7 +952,8 @@ def test_fetch_peticion_exacta() -> None:
         client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
     )
     assert outcome.kind == ui._UI_LOCAL_OUTCOMES["incompatible_response"]
-    url, body, timeout = client.calls[0]
+    method, url, body, timeout, follow_redirects = client.calls[0]
+    assert method == "POST"
     assert url == _BASE_URL + "/api/v1/recommendations"
     assert body == {
         "player_id": _PLAYER,
@@ -797,6 +962,7 @@ def test_fetch_peticion_exacta() -> None:
     }
     assert set(body) == {"player_id", "opponent_id", "as_of_date"}
     assert timeout == ui.UI_REQUEST_TIMEOUT_SECONDS == 30.0
+    assert follow_redirects is False
     assert len(client.calls) == 1
 
 
@@ -838,6 +1004,69 @@ def test_fetch_status_desconocido() -> None:
     )
 
 
+def test_fetch_rechaza_content_length_excesivo_sin_leer_cuerpo() -> None:
+    response = _FakeResponse(
+        200,
+        b"{}",
+        headers={"content-length": str(ui.UI_MAX_RESPONSE_BYTES + 1)},
+        chunks=(RuntimeError("no debe iterarse"),),
+    )
+    outcome = ui.fetch_recommendation(
+        _FakeClient(response), _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.kind == ui._UI_LOCAL_OUTCOMES["incompatible_response"]
+    assert response.iterated is False
+
+
+def test_fetch_rechaza_respuesta_chunked_al_superar_limite() -> None:
+    response = _FakeResponse(
+        200,
+        b"",
+        chunks=(b"x" * ui.UI_MAX_RESPONSE_BYTES, b"y"),
+    )
+    client = _FakeClient(response)
+    outcome = ui.fetch_recommendation(
+        client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.kind == ui._UI_LOCAL_OUTCOMES["incompatible_response"]
+    assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("base_url", "player", "opponent", "as_of"),
+    [
+        ("https://127.0.0.1:59999", _PLAYER, _OPPONENT, _AS_OF),
+        (_BASE_URL, True, _OPPONENT, _AS_OF),
+        (_BASE_URL, _PLAYER, 2, _AS_OF),
+        (_BASE_URL, _PLAYER, _PLAYER, _AS_OF),
+        (_BASE_URL, _PLAYER, _OPPONENT, 20310630),
+        (_BASE_URL, _PLAYER, _OPPONENT, "2031-6-30"),
+    ],
+)
+def test_fetch_rechaza_request_fuera_de_contrato_antes_de_http(
+    base_url: object, player: object, opponent: object, as_of: object
+) -> None:
+    client = _FakeClient()
+    outcome = ui.fetch_recommendation(
+        client, base_url, player, opponent, as_of  # type: ignore[arg-type]
+    )
+    assert outcome.kind == ui._UI_LOCAL_OUTCOMES["incompatible_response"]
+    assert outcome.message == ui._UI_LOCAL_MESSAGES["unexpected"]
+    assert client.calls == []
+
+
+def test_fetch_no_sigue_redirect_ni_lee_su_cuerpo() -> None:
+    response = _FakeResponse(307, b"", chunks=(RuntimeError("no leer"),))
+    client = _FakeClient(response)
+    outcome = ui.fetch_recommendation(
+        client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.kind == ui._UI_LOCAL_OUTCOMES["status_error"]
+    assert outcome.status_code == 307
+    assert client.calls[0][-1] is False
+    assert response.iterated is False
+
+
 def test_fetch_200_json_invalido() -> None:
     client = _FakeClient(_FakeResponse(200, b"<esto no es json>"))
     outcome = ui.fetch_recommendation(
@@ -848,6 +1077,15 @@ def test_fetch_200_json_invalido() -> None:
         outcome.message
         == ui._UI_LOCAL_MESSAGES["incompatible_response"]
     )
+
+
+def test_fetch_200_json_con_clave_duplicada_falla_cerrado() -> None:
+    client = _FakeClient(_FakeResponse(200, b'{"status":1,"status":2}'))
+    outcome = ui.fetch_recommendation(
+        client, _BASE_URL, _PLAYER, _OPPONENT, _AS_OF
+    )
+    assert outcome.kind == ui._UI_LOCAL_OUTCOMES["incompatible_response"]
+    assert outcome.message == ui._UI_LOCAL_MESSAGES["incompatible_response"]
 
 
 def test_fetch_200_contrato_violado() -> None:
@@ -915,8 +1153,9 @@ def test_fetch_cero_reintentos() -> None:
     attempts = 0
 
     class _SiempreFallando:
-        def post(self, url: str, *, json: object = None,
-                 timeout: object = None) -> None:
+        def stream(self, method: str, url: str, *, json: object = None,
+                   timeout: object = None,
+                   follow_redirects: object = None) -> None:
             nonlocal attempts
             attempts += 1
             raise httpx.ConnectError("caida")
@@ -1028,52 +1267,5 @@ def test_render_no_disponible_sin_excepciones(streamlit_silenced) -> None:
 
 
 def test_render_parcial_sin_excepciones(streamlit_silenced) -> None:
-    payload = _payload()
-    payload["status"] = "partially_available"
-    payload["cards"] = [
-        _card(),
-        _card(
-            pattern="P04",
-            opportunity="initial_return_direction",
-            actor="returner",
-            status="not_available",
-            options=(),
-        ),
-        _card(
-            pattern="P05",
-            opportunity="initial_return_depth",
-            actor="returner",
-            options=(
-                _option(
-                    pattern="P05",
-                    opportunity="initial_return_depth",
-                    actor="returner",
-                    category="c1",
-                    status="abstained_insufficient_evidence",
-                    rank=None,
-                ),
-            ),
-        ),
-        _card(
-            pattern="P06",
-            opportunity="initial_return_shot_type",
-            actor="returner",
-            options=(
-                _option(
-                    pattern="P06",
-                    opportunity="initial_return_shot_type",
-                    actor="returner",
-                    category="c1",
-                ),
-                _option(
-                    pattern="P06",
-                    opportunity="initial_return_shot_type",
-                    actor="returner",
-                    category="c2",
-                    rank=2,
-                ),
-            ),
-        ),
-    ]
-    model = ui.parse_public_recommendation(payload)
+    model = _model(status="partially_available")
     ui.render_public_recommendation(model)
