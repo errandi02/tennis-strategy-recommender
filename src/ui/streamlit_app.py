@@ -1182,12 +1182,145 @@ _OPPORTUNITY_LABELS: Final = {
     "initial_return_shot_type": "Tipo de golpe del primer resto",
 }
 _ACTOR_LABELS: Final = {"server": "Sacador", "returner": "Resto"}
+# Encabezado principal humano: NUNCA "P02"/"P04"/"P05"/"P06" a secas
+# (el codigo del patron solo aparece en el expander de detalles
+# tecnicos, ver ``_render_technical_details``).
 _PATTERN_SHORT_LABELS: Final = {
-    "P02": "P02 · Saque",
-    "P04": "P04 · Dirección del resto",
-    "P05": "P05 · Profundidad del resto",
-    "P06": "P06 · Tipo de resto",
+    "P02": "Dirección del primer saque",
+    "P04": "Dirección del resto",
+    "P05": "Profundidad del resto",
+    "P06": "Tipo de golpe del resto",
 }
+
+# --------------------------------------------------------------------- #
+# Traduccion de categorias tacticas (P26): unica fuente autoritativa     #
+# confirmada en codigo, no deducida. Ver auditoria:                      #
+#  - P02 (4/5/6): src/analysis/first_serve_direction_classification.py  #
+#    (DIRECTION_DESCRIPTIONS) y first_serve_direction_feasibility.py     #
+#    (DIRECTION_CODES) -- wide/body/down_the_t (T).                      #
+#  - P04 (1/2/3) y P05 (7/8/9):                                          #
+#    src/analysis/return_direction_feasibility.py (LATERAL_DIRECTIONS,   #
+#    RETURN_DEPTHS), duplicado identico en return_depth_feasibility.py.  #
+#  - P06 (17 codigos, P06_CODE_ORDER="fbrsvzopuylmhijkt"):                #
+#    src/analysis/return_shot_type_feasibility.py (DOCUMENTED_SHOT_      #
+#    TYPES), ya en espanol -- fuente mas directa (es el propio           #
+#    extractor P06).                                                     #
+# --------------------------------------------------------------------- #
+
+_TACTICAL_CATEGORY_LABELS: Final = MappingProxyType(
+    {
+        ("P02", "4"): "Saque abierto",
+        ("P02", "5"): "Saque al cuerpo",
+        ("P02", "6"): "Saque a la T",
+        ("P04", "1"): (
+            "Hacia el lado derecho de un rival diestro / izquierdo de un zurdo"
+        ),
+        ("P04", "2"): "Hacia el centro",
+        ("P04", "3"): (
+            "Hacia el lado izquierdo de un rival diestro / derecho de un zurdo"
+        ),
+        ("P05", "7"): "Resto corto, en los cuadros de saque",
+        ("P05", "8"): "Resto profundo, detrás de la línea de saque",
+        ("P05", "9"): "Resto muy profundo, cerca de la línea de fondo",
+        ("P06", "f"): "Derecha",
+        ("P06", "b"): "Revés",
+        ("P06", "r"): "Slice de derecha",
+        ("P06", "s"): "Slice de revés",
+        ("P06", "v"): "Volea de derecha",
+        ("P06", "z"): "Volea de revés",
+        ("P06", "o"): "Remate",
+        ("P06", "p"): "Remate de revés",
+        ("P06", "u"): "Dejada de derecha",
+        ("P06", "y"): "Dejada de revés",
+        ("P06", "l"): "Globo de derecha",
+        ("P06", "m"): "Globo de revés",
+        ("P06", "h"): "Media volea de derecha",
+        ("P06", "i"): "Media volea de revés",
+        ("P06", "j"): "Volea liftada de derecha",
+        ("P06", "k"): "Volea liftada de revés",
+        ("P06", "t"): "Golpe especial",
+    }
+)
+
+# Significado contractual literal (fuente auditada, ver bloque de
+# arriba) para el expander de detalles tecnicos -- NUNCA para las
+# vistas principales. P02/P04/P05 conservan el identificador tal cual
+# aparece en su extractor (ingles); P06 conserva el texto en espanol
+# del extractor, ya con las precisiones literales originales.
+_TACTICAL_CATEGORY_CONTRACT_MEANING: Final = MappingProxyType(
+    {
+        ("P02", "4"): "wide",
+        ("P02", "5"): "body",
+        ("P02", "6"): "down_the_t",
+        ("P04", "1"): "right_side_of_right_handed_opponent_or_left_of_left_handed",
+        ("P04", "2"): "centre",
+        ("P04", "3"): "left_side_of_right_handed_opponent_or_right_of_left_handed",
+        ("P05", "7"): "service_boxes",
+        ("P05", "8"): "behind_service_line_closer_to_service_line",
+        ("P05", "9"): "closer_to_baseline",
+        ("P06", "f"): "derecha, excluidos slices y golpes especiales",
+        ("P06", "b"): "revés, excluidos slices y golpes especiales",
+        ("P06", "r"): "slice de derecha",
+        ("P06", "s"): "slice de revés",
+        ("P06", "v"): "volea de derecha",
+        ("P06", "z"): "volea de revés",
+        ("P06", "o"): "remate estándar",
+        ("P06", "p"): "remate de revés",
+        ("P06", "u"): "dejada de derecha",
+        ("P06", "y"): "dejada de revés",
+        ("P06", "l"): "globo de derecha",
+        ("P06", "m"): "globo de revés",
+        ("P06", "h"): "media volea de derecha",
+        ("P06", "i"): "media volea de revés",
+        ("P06", "j"): "volea liftada de derecha",
+        ("P06", "k"): "volea liftada de revés",
+        ("P06", "t"): "golpe especial, incluido trick shot o tweener",
+    }
+)
+
+# Precision literal ampliada del extractor (solo aplica a P06 f/b hoy),
+# reservada al bloque "¿Por qué aparece esta recomendación?".
+_TACTICAL_CATEGORY_DETAIL: Final = MappingProxyType(
+    {
+        ("P06", "f"): "excluidos slices y golpes especiales",
+        ("P06", "b"): "excluidos slices y golpes especiales",
+    }
+)
+
+_UNKNOWN_CATEGORY_FALLBACK: Final = "Categoría {code}"
+
+
+def format_tactical_category(pattern_id: str, category_code: str) -> str:
+    """Unica funcion pura de traduccion de una categoria contractual
+    (P02/P04/P05/P06) a una etiqueta corta y comprensible en español,
+    para USO EN TODAS LAS VISTAS PRINCIPALES (recomendación principal,
+    alternativas, resumen ejecutivo, explicación, abstenciones). Nunca
+    deduce significado: las 26 traducciones provienen literalmente de
+    ``_TACTICAL_CATEGORY_LABELS`` (ver auditoría de fuente arriba).
+
+    Fallback seguro: cualquier combinación fuera del catálogo cerrado
+    (código desconocido, patrón desconocido) nunca lanza excepción ni
+    se muestra "en blanco" -- devuelve un texto explícito con el código
+    original, para que un dato inesperado sea visible y no confuso."""
+    label = _TACTICAL_CATEGORY_LABELS.get((pattern_id, category_code))
+    if label is not None:
+        return label
+    return _UNKNOWN_CATEGORY_FALLBACK.format(code=category_code)
+
+
+def tactical_category_contract_meaning(pattern_id: str, category_code: str) -> str:
+    """Significado contractual literal (fuente auditada), EXCLUSIVO del
+    expander de detalles técnicos -- nunca de las vistas principales.
+    Fallback seguro: el propio código si no está en el catálogo cerrado."""
+    return _TACTICAL_CATEGORY_CONTRACT_MEANING.get(
+        (pattern_id, category_code), category_code
+    )
+
+
+def _tactical_category_detail(pattern_id: str, category_code: str) -> str | None:
+    """Precision literal ampliada opcional (solo P06 f/b hoy); ``None``
+    si la categoria no tiene precision adicional documentada."""
+    return _TACTICAL_CATEGORY_DETAIL.get((pattern_id, category_code))
 _CARD_STATUS_LABELS: Final = {
     "available": "Recomendación disponible",
     "partially_available": "Evidencia parcial",
@@ -1257,7 +1390,12 @@ def _render_option_explanation(option: PublicOption) -> None:
         option.opponent_allowed_evidence.evidence_state,
         option.opponent_allowed_evidence.evidence_state,
     )
-    st.markdown(f"**Categoría {option.category}**")
+    category_label = format_tactical_category(option.pattern_id, option.category)
+    detail = _tactical_category_detail(option.pattern_id, option.category)
+    heading = f"**{category_label}**"
+    if detail is not None:
+        heading += f" ({detail})"
+    st.markdown(heading)
     if option.status == "ranked":
         st.write(
             f"Combina, a partes iguales, lo que le funcionó históricamente al "
@@ -1304,14 +1442,20 @@ def _render_card(card: PublicPatternCard) -> None:
         )
         if ranked:
             top = ranked[0]
+            top_label = format_tactical_category(top.pattern_id, top.category)
             columns = st.columns(3)
             columns[0].metric(
-                "Recomendación principal", top.category,
-                help="Categoría mejor situada según el score descriptivo."
+                "Recomendación principal", top_label,
+                help="Categoría mejor situada según la puntuación descriptiva."
             )
             columns[1].metric(
-                "Score",
+                "Puntuación descriptiva",
                 f"{top.score:.0%}" if top.score is not None else "—",
+                help=(
+                    "Combina al 50 % la eficacia histórica del jugador y la "
+                    "vulnerabilidad histórica del rival. No representa una "
+                    "probabilidad de ganar el partido."
+                ),
             )
             columns[2].metric(
                 "Muestra",
@@ -1319,9 +1463,10 @@ def _render_card(card: PublicPatternCard) -> None:
             )
             if len(ranked) > 1:
                 alternatives = ", ".join(
-                    f"{option.category} ({option.score:.0%})"
+                    f"{format_tactical_category(option.pattern_id, option.category)} "
+                    f"({option.score:.0%})"
                     if option.score is not None
-                    else option.category
+                    else format_tactical_category(option.pattern_id, option.category)
                     for option in ranked[1:]
                 )
                 st.caption(f"Alternativas permitidas por el contrato: {alternatives}")
@@ -1336,7 +1481,10 @@ def _render_card(card: PublicPatternCard) -> None:
             if option.status == "abstained_insufficient_evidence"
         ]
         if abstained:
-            categories = ", ".join(option.category for option in abstained)
+            categories = ", ".join(
+                format_tactical_category(option.pattern_id, option.category)
+                for option in abstained
+            )
             st.caption(
                 f"Categorías con abstención por evidencia insuficiente: {categories}."
             )
@@ -1395,7 +1543,9 @@ def render_public_recommendation(
                 None,
             )
             highlight_labels.append(
-                f"{label} → {top_ranked.category}" if top_ranked is not None else label
+                f"{label} → "
+                f"{format_tactical_category(card.pattern_id, top_ranked.category)}"
+                if top_ranked is not None else label
             )
         highlights = ", ".join(highlight_labels)
         st.markdown(
@@ -1423,11 +1573,21 @@ def render_public_recommendation(
         if model.status_reason_codes:
             st.caption("Motivos: " + ", ".join(model.status_reason_codes))
         for card in model.cards:
-            st.markdown(f"**{card.pattern_id}**")
+            st.markdown(f"**{card.pattern_id}** ({_PATTERN_SHORT_LABELS.get(card.pattern_id, card.pattern_id)})")
             for option in card.options:
+                meaning = tactical_category_contract_meaning(
+                    option.pattern_id, option.category
+                )
                 st.write(
-                    f"- {option.category}: "
-                    f"{_OPTION_STATUS_LABELS.get(option.status, option.status)} · "
+                    f"- Patrón: {option.pattern_id} · Código interno: "
+                    f"{option.category} · Significado contractual: {meaning}"
+                )
+                st.caption(
+                    f"Estado: {_OPTION_STATUS_LABELS.get(option.status, option.status)} · "
+                    f"Puntuación descriptiva original: "
+                    f"{option.score if option.score is not None else '—'} · "
+                    f"Posición del ranking: "
+                    f"{option.rank_position if option.rank_position is not None else '—'} · "
                     f"reason_codes={', '.join(option.reason_codes) or '—'}"
                 )
                 st.caption("Perspectiva ejecutora — " + _evidence_summary_line(option.executor_evidence))
@@ -1892,11 +2052,13 @@ __all__ = (
     "fetch_players_catalog",
     "fetch_recommendation",
     "filter_catalog_by_search",
+    "format_tactical_category",
     "main",
     "outcome_kind_label",
     "parse_public_recommendation",
     "render_public_recommendation",
     "run_recommendation_experience",
+    "tactical_category_contract_meaning",
     "validate_api_base_url",
     "validate_container_api_base_url",
     "validate_local_date",

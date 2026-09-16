@@ -30,6 +30,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Final
 from urllib.parse import quote
 
 import httpx
@@ -1635,3 +1636,410 @@ def test_run_recommendation_experience_calls_catalog_fetchers_at_most_once_each(
             and node.func.id == cached_name
         )
         assert call_count == 1, f"{cached_name} debe invocarse exactamente una vez."
+
+
+# --------------------------------------------------------------------- #
+# L. P26 -- traduccion de categorias tacticas a etiquetas comprensibles  #
+# --------------------------------------------------------------------- #
+
+
+# Tabla exacta confirmada por el usuario (fuente auditada, ver P26):
+# (pattern_id, codigo) -> etiqueta publica exacta.
+_ALL_CATEGORY_TRANSLATIONS: Final = (
+    ("P02", "4", "Saque abierto"),
+    ("P02", "5", "Saque al cuerpo"),
+    ("P02", "6", "Saque a la T"),
+    ("P04", "1", "Hacia el lado derecho de un rival diestro / izquierdo de un zurdo"),
+    ("P04", "2", "Hacia el centro"),
+    ("P04", "3", "Hacia el lado izquierdo de un rival diestro / derecho de un zurdo"),
+    ("P05", "7", "Resto corto, en los cuadros de saque"),
+    ("P05", "8", "Resto profundo, detrás de la línea de saque"),
+    ("P05", "9", "Resto muy profundo, cerca de la línea de fondo"),
+    ("P06", "f", "Derecha"),
+    ("P06", "b", "Revés"),
+    ("P06", "r", "Slice de derecha"),
+    ("P06", "s", "Slice de revés"),
+    ("P06", "v", "Volea de derecha"),
+    ("P06", "z", "Volea de revés"),
+    ("P06", "o", "Remate"),
+    ("P06", "p", "Remate de revés"),
+    ("P06", "u", "Dejada de derecha"),
+    ("P06", "y", "Dejada de revés"),
+    ("P06", "l", "Globo de derecha"),
+    ("P06", "m", "Globo de revés"),
+    ("P06", "h", "Media volea de derecha"),
+    ("P06", "i", "Media volea de revés"),
+    ("P06", "j", "Volea liftada de derecha"),
+    ("P06", "k", "Volea liftada de revés"),
+    ("P06", "t", "Golpe especial"),
+)
+
+
+def test_all_category_translations_cover_exactly_26_contract_codes() -> None:
+    """Las 26 categorias del contrato cerrado P02(3)+P04(3)+P05(3)+P06(17)
+    tienen traduccion, ni una menos ni una de mas."""
+    assert len(_ALL_CATEGORY_TRANSLATIONS) == 26
+    per_pattern = {}
+    for pattern, code, _label in _ALL_CATEGORY_TRANSLATIONS:
+        per_pattern.setdefault(pattern, set()).add(code)
+    assert per_pattern["P02"] == {"4", "5", "6"}
+    assert per_pattern["P04"] == {"1", "2", "3"}
+    assert per_pattern["P05"] == {"7", "8", "9"}
+    assert per_pattern["P06"] == set("fbrsvzopuylmhijkt")
+
+
+@pytest.mark.parametrize(("pattern", "code", "expected"), _ALL_CATEGORY_TRANSLATIONS)
+def test_format_tactical_category_matches_confirmed_table(
+    pattern: str, code: str, expected: str
+) -> None:
+    assert ui.format_tactical_category(pattern, code) == expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "code"),
+    [("P02", "x"), ("P09", "4"), ("P06", "q"), ("", ""), ("P02", "")],
+)
+def test_format_tactical_category_unknown_code_falls_back_safely(
+    pattern: str, code: str
+) -> None:
+    """Nunca lanza excepcion; el resultado sigue siendo un string legible
+    que incluye el codigo original (nunca se muestra "en blanco")."""
+    result = ui.format_tactical_category(pattern, code)
+    assert type(result) is str and result
+    assert code in result
+
+
+def test_format_tactical_category_is_a_pure_function() -> None:
+    """Misma entrada -> misma salida, sin efectos secundarios ni estado."""
+    for _ in range(5):
+        assert ui.format_tactical_category("P02", "4") == "Saque abierto"
+
+
+def test_tactical_category_contract_meaning_p02_matches_audited_source() -> None:
+    """Confirma en codigo (P26, punto 5) la traduccion autoritativa de
+    P02: 4/5/6 -> wide/body/down_the_t."""
+    assert ui.tactical_category_contract_meaning("P02", "4") == "wide"
+    assert ui.tactical_category_contract_meaning("P02", "5") == "body"
+    assert ui.tactical_category_contract_meaning("P02", "6") == "down_the_t"
+
+
+def test_tactical_category_contract_meaning_p04_p05_match_audited_source() -> None:
+    assert (
+        ui.tactical_category_contract_meaning("P04", "1")
+        == "right_side_of_right_handed_opponent_or_left_of_left_handed"
+    )
+    assert ui.tactical_category_contract_meaning("P04", "2") == "centre"
+    assert (
+        ui.tactical_category_contract_meaning("P04", "3")
+        == "left_side_of_right_handed_opponent_or_right_of_left_handed"
+    )
+    assert ui.tactical_category_contract_meaning("P05", "7") == "service_boxes"
+    assert (
+        ui.tactical_category_contract_meaning("P05", "8")
+        == "behind_service_line_closer_to_service_line"
+    )
+    assert ui.tactical_category_contract_meaning("P05", "9") == "closer_to_baseline"
+
+
+def test_tactical_category_contract_meaning_p06_includes_f_precision() -> None:
+    """Incluye el codigo f, con la precision literal del extractor
+    ("excluidos slices y golpes especiales")."""
+    meaning = ui.tactical_category_contract_meaning("P06", "f")
+    assert meaning == "derecha, excluidos slices y golpes especiales"
+
+
+@pytest.mark.parametrize(("pattern", "code", "_label"), _ALL_CATEGORY_TRANSLATIONS)
+def test_tactical_category_contract_meaning_defined_for_every_contract_code(
+    pattern: str, code: str, _label: str
+) -> None:
+    meaning = ui.tactical_category_contract_meaning(pattern, code)
+    assert type(meaning) is str and meaning
+
+
+def test_tactical_category_contract_meaning_unknown_code_falls_back_to_code() -> None:
+    assert ui.tactical_category_contract_meaning("P09", "zzz") == "zzz"
+
+
+def test_pattern_headers_are_humanized_never_bare_pattern_id() -> None:
+    """Requisito explicito: nunca P02/P04/P05/P06 como encabezado."""
+    assert ui._PATTERN_SHORT_LABELS == {
+        "P02": "Dirección del primer saque",
+        "P04": "Dirección del resto",
+        "P05": "Profundidad del resto",
+        "P06": "Tipo de golpe del resto",
+    }
+    for pattern_id, header in ui._PATTERN_SHORT_LABELS.items():
+        assert header != pattern_id
+        assert not header.startswith(pattern_id)
+
+
+# --------------------------------------------------------------------- #
+# Doble minimo de Streamlit que graba todo el texto renderizado, para   #
+# distinguir el contenido PRINCIPAL (debe mostrar etiquetas humanas) del #
+# expander tecnico final (unico lugar permitido para los codigos crudos) #
+# --------------------------------------------------------------------- #
+
+
+class _NullCtx:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+class _RecordingColumn:
+    def __init__(self, sink: list[str]) -> None:
+        self._sink = sink
+
+    def metric(self, label, value, **_kwargs) -> None:
+        self._sink.append(f"{label}={value}")
+
+    def markdown(self, text, **_kwargs) -> None:
+        self._sink.append(str(text))
+
+    def caption(self, text, **_kwargs) -> None:
+        self._sink.append(str(text))
+
+    def write(self, text, **_kwargs) -> None:
+        self._sink.append(str(text))
+
+
+class _RecordingStreamlit:
+    """Graba todo el texto pasado a las llamadas de render usadas por
+    ``render_public_recommendation``, separando lo que ocurre ANTES del
+    expander tecnico final (contenido principal) de lo que ocurre
+    DESPUES (unico lugar permitido para codigos crudos)."""
+
+    def __init__(self) -> None:
+        self.main: list[str] = []
+        self.technical: list[str] = []
+        self._in_technical = False
+
+    def _sink(self) -> list[str]:
+        return self.technical if self._in_technical else self.main
+
+    def markdown(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def write(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def caption(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def success(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def warning(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def info(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def error(self, text, **_kwargs) -> None:
+        self._sink().append(str(text))
+
+    def columns(self, n, **_kwargs):
+        return [_RecordingColumn(self._sink()) for _ in range(n)]
+
+    def container(self, **_kwargs):
+        return _NullCtx()
+
+    def expander(self, title, **_kwargs):
+        return _ExpanderCtx(self, title)
+
+
+class _ExpanderCtx:
+    def __init__(self, outer: "_RecordingStreamlit", title: str) -> None:
+        self._outer = outer
+        self._title = title
+        self._was_technical = outer._in_technical
+
+    def __enter__(self):
+        if self._title == "Ver detalles técnicos y trazabilidad":
+            self._outer._in_technical = True
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self._outer._in_technical = self._was_technical
+        return False
+
+
+def _real_evidence(state: str = "available") -> ui.PublicEvidenceComponent:
+    return ui.PublicEvidenceComponent(
+        perspective="executor", scope="global", evidence_state=state,
+        labeled_activations=60, successes=40, failures=20, distinct_matches=6,
+        success_rate=0.6667, wilson_lower=0.55, wilson_upper=0.77,
+    )
+
+
+def _real_option(
+    pattern: str, category: str, *, rank: int | None = 1
+) -> ui.PublicOption:
+    status = "ranked" if rank else "abstained_insufficient_evidence"
+    return ui.PublicOption(
+        pattern_id=pattern, category=category,
+        tactical_opportunity="first_serve_direction", actor="server",
+        status=status, reason_codes=("ok",) if rank else ("insufficient",),
+        executor_evidence=_real_evidence(),
+        opponent_allowed_evidence=_real_evidence(),
+        score=0.66 if rank else None,
+        descriptive_uncertainty_envelope=(0.55, 0.77) if rank else None,
+        rank_position=rank, tie_group=1 if rank else None,
+        canonical_explanation="Explicación canónica sintética.",
+    )
+
+
+def _real_category_model() -> ui.PublicRecommendation:
+    """Modelo sintetico construido DIRECTAMENTE sobre las dataclasses de
+    presentacion (sin pasar por el round-trip JSON/P11, que no permite
+    forzar de forma simple una categoria ganadora concreta) con
+    codigos de categoria REALES -- los del ejemplo confirmado por el
+    usuario -- para verificar que el render muestra la etiqueta y no
+    el codigo crudo fuera del expander tecnico."""
+    real_codes = {"P02": "4", "P04": "1", "P05": "9", "P06": "f"}
+    cards = tuple(
+        ui.PublicPatternCard(
+            pattern_id=pattern, actor="server",
+            tactical_opportunity="first_serve_direction", status="available",
+            status_reason_codes=(),
+            categories=(code,), options=(_real_option(pattern, code),),
+            ranked_options=(code,), top_options=(code,), abstained_options=(),
+            total_options=1, scored_options=1, abstained_options_count=0,
+        )
+        for pattern, code in real_codes.items()
+    )
+    return ui.PublicRecommendation(
+        status="available", status_reason_codes=(), cards=cards, limitations=(),
+    )
+
+
+def test_main_recommendation_shows_translated_labels_not_bare_codes(
+    monkeypatch,
+) -> None:
+    """Las etiquetas traducidas aparecen en el contenido principal, y
+    los VALORES concretos donde antes se mostraba el codigo crudo
+    (metrica principal, alternativas, abstenciones, encabezado de
+    explicacion) ahora muestran la etiqueta, nunca el codigo a secas.
+    (Un escaneo global de "cualquier digito suelto" no es fiable aqui:
+    el resumen ejecutivo legitimamente contiene numeros como el conteo
+    de patrones -- se verifican los VALORES exactos en su lugar.)"""
+    model = _real_category_model()
+    double = _RecordingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)
+
+    main_text = " ".join(double.main)
+    expected_labels = {
+        "P02": "Saque abierto",
+        "P04": (
+            "Hacia el lado derecho de un rival diestro / izquierdo de un zurdo"
+        ),
+        "P05": "Resto muy profundo, cerca de la línea de fondo",
+        "P06": "Derecha",
+    }
+    for label in expected_labels.values():
+        assert label in main_text, f"Etiqueta ausente del contenido principal: {label}"
+
+    # El encabezado de la explicacion "¿Por qué aparece...?" (una linea
+    # propia, "**<etiqueta>**" sola o seguida de "(...)") debe llevar la
+    # etiqueta, nunca el codigo crudo a secas -- comprobado sobre las
+    # lineas exactas producidas por _render_option_explanation, no sobre
+    # el texto aplanado completo (que legitimamente contiene numeros en
+    # otros contextos, p.ej. el conteo de patrones del resumen).
+    explanation_headings = [
+        text for text in double.main
+        if text.startswith("**") and text.rstrip(")").split("(")[0].strip("* ") in (
+            "4", "1", "9", "f",
+        )
+    ]
+    assert explanation_headings == [], (
+        f"Encabezado de explicacion con codigo crudo: {explanation_headings}"
+    )
+
+
+def test_technical_expander_still_shows_pattern_code_and_contract_meaning(
+    monkeypatch,
+) -> None:
+    model = _real_category_model()
+    double = _RecordingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)
+
+    technical_text = " ".join(double.technical)
+    assert "Código interno: 4" in technical_text
+    assert "Significado contractual: wide" in technical_text
+    assert "Patrón: P02" in technical_text
+
+
+def test_main_recommendation_metric_shows_translated_category(monkeypatch) -> None:
+    model = _real_category_model()
+    double = _RecordingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)
+    assert "Recomendación principal=Saque abierto" in double.main
+
+
+def test_score_label_renamed_to_puntuacion_descriptiva(monkeypatch) -> None:
+    model = _real_category_model()
+    double = _RecordingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)
+    joined = " ".join(double.main)
+    assert "Puntuación descriptiva=" in joined
+    assert "Score=" not in joined
+
+
+def test_score_help_text_present_in_source() -> None:
+    """El texto se compone en el origen como literales de string
+    adyacentes en varias lineas (Python las concatena solo en tiempo
+    de ejecucion, no en el texto crudo): se comprueban los 3
+    fragmentos por separado tal como aparecen literalmente."""
+    source = Path(ui.__file__).read_text(encoding="utf-8")
+    for fragment in (
+        "Combina al 50 % la eficacia histórica del jugador y la ",
+        "vulnerabilidad histórica del rival. No representa una ",
+        "probabilidad de ganar el partido.",
+    ):
+        assert fragment in source
+
+
+def test_score_help_text_present_when_metric_is_rendered(monkeypatch) -> None:
+    """Verificacion en tiempo de ejecucion (no solo de fuente): el help
+    concatenado real llega al metric() de Streamlit."""
+    model = _real_category_model()
+    captured_help: list[str] = []
+
+    class _HelpCapturingColumn:
+        def metric(self, label, value, help=None, **_kwargs) -> None:
+            if label == "Puntuación descriptiva":
+                captured_help.append(help)
+
+        def markdown(self, *_a, **_k) -> None:
+            return None
+
+    class _HelpCapturingStreamlit(_RecordingStreamlit):
+        def columns(self, n, **_kwargs):
+            return [_HelpCapturingColumn() for _ in range(n)]
+
+    double = _HelpCapturingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)
+    assert len(captured_help) >= 1
+    assert captured_help[0] == (
+        "Combina al 50 % la eficacia histórica del jugador y la "
+        "vulnerabilidad histórica del rival. No representa una "
+        "probabilidad de ganar el partido."
+    )
+
+
+def test_render_with_synthetic_category_codes_never_crashes(monkeypatch) -> None:
+    """Codigos NO reales/desconocidos (fixtures sinteticas historicas
+    tipo "c4") deben seguir renderizando sin excepcion via el fallback
+    seguro, no solo los codigos reales del contrato."""
+    model = _model("available")
+    double = _RecordingStreamlit()
+    monkeypatch.setattr(ui, "st", double)
+    ui.render_public_recommendation(model)  # no debe lanzar
+    assert double.main or double.technical
