@@ -12,33 +12,36 @@ evaluacion real autorizada (en cuyo caso debe permanecer BYTE A BYTE
 identico). No presupone ausencia permanente: los tests de este archivo
 siguen siendo ejecutables despues de que exista un bundle real.
 
-Cubre: puerta cerrada (parcheada a False donde se ejercita ese camino)
-antes de cualquier I/O, fuente ausente/directorio/symlink/no-regular,
-bundle preexistente bloqueado, serializacion determinista, JSON con
-claves duplicadas rechazado en verificacion, fallo al escribir/
-verificar CUALQUIERA de los cinco archivos deja cero bundle final y
-cero temporales, fallo del UNICO replace final deja cero bundle y cero
-temporales, ningun estado parcial visible antes del rename, exactamente
-un replace de publicacion (y una unica llamada a cada una de fuente/
-evaluacion/publicacion en el runner completo), verificacion posterior
-del bundle completo, permisos privados, limites de tamano, cero
-reintentos (incluida ausencia de bucle en ``main()``), SIGTERM/SIGINT
-gestionados sin dejar temporales (simulado y con senal real de SO),
-argv real del CLI correctamente reenviado a ``main()``, cero efectos al
-importar, variables de entorno simuladas sin cambiar la puerta, y AST
-con una unica asignacion de ``REAL_TEST_EVALUATION_AUTHORIZED`` (en
-P20, nunca reasignada aqui).
+Cubre: puerta cerrada (por defecto vigente, y tambien parcheada
+explicitamente donde se ejercita ese camino) antes de cualquier I/O,
+fuente ausente/directorio/symlink/no-regular, bundle preexistente
+bloqueado, serializacion determinista, JSON con claves duplicadas
+rechazado en verificacion, fallo al escribir/verificar CUALQUIERA de
+los cinco archivos deja cero bundle final y cero temporales, fallo del
+UNICO replace final deja cero bundle y cero temporales, ningun estado
+parcial visible antes del rename, exactamente un replace de
+publicacion (y una unica llamada a cada una de fuente/evaluacion/
+publicacion en el runner completo), verificacion posterior del bundle
+completo, permisos privados, limites de tamano, cero reintentos
+(incluida ausencia de bucle en ``main()``), SIGTERM/SIGINT gestionados
+sin dejar temporales (simulado y con senal real de SO), argv real del
+CLI correctamente reenviado a ``main()``, cero efectos al importar,
+variables de entorno simuladas sin cambiar la puerta, y AST con una
+unica asignacion de ``REAL_TEST_EVALUATION_AUTHORIZED`` (en P20, nunca
+reasignada aqui).
 
-IMPORTANTE (P23): el valor VIGENTE (no parcheado) de
-``runner.REAL_TEST_EVALUATION_AUTHORIZED`` es ``True`` -- una unica
-ejecucion manual autorizada tras el preflight completo, ver
-``final_sealed_evaluation.py``. Todo test de este archivo que ejercite
-el camino "puerta cerrada" parchea explicitamente a False; todo test
-que ejercite el camino "autorizado" sigue inyectando un
-``source_reader`` sintetico o sustituyendo ``execute_real_sealed_test_
-evaluation``. Ningun test de este archivo invoca jamas el lector real
-ni deja que la ruta por defecto (``pd.read_parquet`` sobre la fuente
-contractual real) se ejecute.
+IMPORTANTE (P23, cierre tras fallo): el valor VIGENTE (no parcheado)
+de ``runner.REAL_TEST_EVALUATION_AUTHORIZED`` es ``False`` -- el unico
+intento autorizado ya se consumio (fallo antes de publicar el bundle;
+ver ``final_sealed_evaluation.py`` para el historial exacto y la razon
+de cierre); ninguna nueva ejecucion queda autorizada. Todo test de
+este archivo que ejercite el camino "puerta autorizada" (via
+``_authorized_runner_env``) sigue inyectando un ``source_reader``
+sintetico o sustituyendo ``execute_real_sealed_test_evaluation`` --
+disciplina que se mantiene aunque el valor por defecto sea False hoy,
+para proteger tambien una futura reautorizacion. Ningun test de este
+archivo invoca jamas el lector real ni deja que la ruta por defecto
+(``pd.read_parquet`` sobre la fuente contractual real) se ejecute.
 """
 
 from __future__ import annotations
@@ -47,6 +50,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -173,42 +177,56 @@ def test_ast_p20_has_exactly_one_authorization_assignment() -> None:
 
     source = Path(p20.__file__).read_text(encoding="utf-8")
     assert len(_authorization_assignments(source)) == 1
-    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is False
 
 
-# Frases contractuales obsoletas (correccion post-commit-P23): cualquier
-# afirmacion de que el valor VIGENTE es False, o de que una funcion
-# SIEMPRE aborta por la puerta, sin condicionarlo, deja de ser cierta en
-# cuanto la puerta pasa a True. Denylist literal de las frases exactas
-# detectadas y corregidas.
+# Frases contractuales obsoletas (deteccion original: correccion
+# post-commit-P23): cualquier afirmacion ABSOLUTA e incondicionada de
+# que la puerta solo puede valer un unico valor "hoy", o de que una
+# funcion SIEMPRE aborta por ella sin condicionarlo al valor real de la
+# constante, deja de ser cierta en cuanto la puerta cambia de valor
+# (como ya ocurrio dos veces: True tras P23, False tras el cierre por
+# fallo). Denylist literal, unconditional para cualquier valor de la
+# puerta -- estas frases nunca deben reaparecer.
 _STALE_GATE_CLAIM_PHRASES: tuple[str, ...] = (
     "el unico valor posible hoy",
     "esta funcion SIEMPRE aborta",
     "SIEMPRE aborta antes de tocar",
 )
 
-# Marcadores de referencias LEGITIMAS a la futura regla de cierre (que
-# devolvera la puerta a False tras completar/fallar/interrumpir la
-# unica ejecucion autorizada): deben seguir presentes, para confirmar
-# que la correccion de lo obsoleto no borro contrato valido.
+# Marcadores de referencias LEGITIMAS a la regla de cierre (presente o
+# futura, segun el momento): deben seguir presentes, para confirmar que
+# la correccion de lo obsoleto no borro contrato valido.
 _LEGITIMATE_CLOSURE_RULE_MARKERS: tuple[str, ...] = (
     "regla de cierre",
     "commit posterior",
 )
 
+# Anotaciones "Estado VIGENTE ...: ``True``/``False``" en los
+# docstrings/comentarios contractuales: si existen, DEBEN coincidir con
+# el valor real de la constante en este momento. Evita que una
+# correccion textual quede pegada a un valor concreto y se vuelva
+# obsoleta en el proximo cambio de puerta (True->False, False->True, ...).
+_ESTADO_VIGENTE_PATTERN = re.compile(r"Estado VIGENTE[^:]*:\s*``(True|False)``")
 
-def test_no_stale_current_state_false_claims_while_gate_is_true() -> None:
-    """P23-correccion: mientras ``REAL_TEST_EVALUATION_AUTHORIZED``
-    (AST, unica asignacion) sea ``True``, ningun docstring/comentario
-    contractual de P20/P22 puede afirmar -- sin condicionarlo -- que el
-    valor actual es ``False`` o que una funcion SIEMPRE aborta por esa
-    puerta (los dos hallazgos exactos detectados tras el commit P23).
-    Las referencias legitimas a la FUTURA regla de cierre se preservan
-    y se comprueban aparte, para no permitir que la correccion de lo
+
+def test_no_stale_absolute_gate_claims_in_contractual_docstrings() -> None:
+    """Independiente del valor ACTUAL de la puerta: ningun docstring/
+    comentario contractual de P20/P22 puede afirmar -- sin
+    condicionarlo al valor real de la constante -- que solo puede valer
+    un unico valor "hoy", o que una funcion SIEMPRE aborta por ella
+    (los dos hallazgos exactos detectados tras el commit P23). Ademas,
+    toda anotacion explicita "Estado VIGENTE: ``True``/``False``" debe
+    coincidir con el valor real de ``REAL_TEST_EVALUATION_AUTHORIZED``
+    en este momento -- este test se re-verifica cada vez que la puerta
+    cambia de valor, en vez de asumir una direccion fija. Las
+    referencias legitimas a la regla de cierre se preservan y se
+    comprueban aparte, para no permitir que la correccion de lo
     obsoleto borre contrato valido junto con el texto erroneo."""
     import src.analysis.final_sealed_evaluation as p20
 
-    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
+    actual_value = p20.REAL_TEST_EVALUATION_AUTHORIZED
+    assert isinstance(actual_value, bool)
 
     p20_source = Path(p20.__file__).read_text(encoding="utf-8")
     runner_source = Path(runner.__file__).read_text(encoding="utf-8")
@@ -217,17 +235,23 @@ def test_no_stale_current_state_false_claims_while_gate_is_true() -> None:
                                  ("final_sealed_evaluation_runner.py", runner_source)):
         for phrase in _STALE_GATE_CLAIM_PHRASES:
             assert phrase not in source, (
-                f"{module_name}: frase contractual obsoleta detectada: {phrase!r} "
-                "(afirma el estado False mientras la puerta vigente es True)."
+                f"{module_name}: frase contractual obsoleta detectada: {phrase!r}."
+            )
+        for match in _ESTADO_VIGENTE_PATTERN.finditer(source):
+            annotated_value = match.group(1) == "True"
+            assert annotated_value == actual_value, (
+                f"{module_name}: anotacion 'Estado VIGENTE' declara "
+                f"{match.group(1)} pero el valor real de "
+                f"REAL_TEST_EVALUATION_AUTHORIZED es {actual_value!r}."
             )
 
     assert any(marker in p20_source for marker in _LEGITIMATE_CLOSURE_RULE_MARKERS), (
         "final_sealed_evaluation.py perdio la referencia legitima a la "
-        "regla de cierre futura."
+        "regla de cierre."
     )
     assert any(marker in runner_source for marker in _LEGITIMATE_CLOSURE_RULE_MARKERS), (
         "final_sealed_evaluation_runner.py perdio la referencia legitima "
-        "a la regla de cierre futura."
+        "a la regla de cierre."
     )
 
 
@@ -237,11 +261,11 @@ def test_no_stale_current_state_false_claims_while_gate_is_true() -> None:
 
 
 def test_execute_real_evaluation_aborts_before_source_reader_called(monkeypatch) -> None:
-    """Ejercita deliberadamente la rama con la puerta CERRADA (parcheada
-    a False aqui): el valor vigente hoy es True (P23, una unica
-    ejecucion manual autorizada); este test protege el camino
-    POSTERIOR al cierre de esa ejecucion (tras completarse, fallar o
-    interrumpirse, la puerta vuelve a False en un commit futuro)."""
+    """Estado vigente tras el cierre P23: el valor real (no parcheado)
+    de la puerta ya es False (el unico intento autorizado fallo y
+    quedo consumido). Se parchea a False de forma explicita de todos
+    modos, para que este test siga protegiendo la rama cerrada aunque
+    una futura reautorizacion vuelva a poner la constante en True."""
     monkeypatch.setattr(runner, "REAL_TEST_EVALUATION_AUTHORIZED", False)
 
     def _forbidden(_path):
@@ -274,23 +298,26 @@ def test_main_returns_1_with_closed_gate_before_any_io(monkeypatch) -> None:
     assert runner.main([]) == 1
 
 
-def test_main_default_state_is_authorized_but_never_invoked_by_tests() -> None:
-    """P23: el valor VIGENTE (no parcheado) de la puerta es True -- una
-    unica ejecucion manual autorizada. Ningun test de este archivo
-    debe invocar ``runner.main([])``/``execute_real_sealed_test_
-    evaluation()`` bajo este valor real sin sustituir ``source_reader``
-    (eso dispararia una lectura real de la fuente contractual); este
-    test documenta y fija el valor esperado sin ejecutar nada mas."""
-    assert runner.REAL_TEST_EVALUATION_AUTHORIZED is True
+def test_main_default_state_is_closed_after_failure_and_never_invoked_bare_by_tests() -> None:
+    """Cierre P23 tras fallo: el valor VIGENTE (no parcheado) de la
+    puerta es False -- el unico intento autorizado fallo y quedo
+    consumido; diagnostico pendiente, sin nueva autorizacion. Ningun
+    test de este archivo debe invocar ``runner.main([])``/
+    ``execute_real_sealed_test_evaluation()`` sin sustituir
+    ``source_reader`` cuando la puerta este en True (eso dispararia una
+    lectura real de la fuente contractual); este test documenta y fija
+    el valor esperado sin ejecutar nada mas."""
+    assert runner.REAL_TEST_EVALUATION_AUTHORIZED is False
 
 
 def test_no_bypass_env_var_opens_the_gate() -> None:
-    """Envenena con "false" -- el OPUESTO del valor real (True tras
-    P23) -- para demostrar que el entorno tampoco puede apagarla."""
+    """Envenena con "true" -- el OPUESTO del valor real (False tras el
+    cierre P23 por fallo) -- para demostrar que el entorno tampoco
+    puede REABRIRLA."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_ROOT)
-    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "false"
-    env["TENNIS_FINAL_EVALUATION_FORCE"] = "0"
+    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "true"
+    env["TENNIS_FINAL_EVALUATION_FORCE"] = "1"
     completed = subprocess.run(
         [
             sys.executable, "-c",
@@ -300,7 +327,7 @@ def test_no_bypass_env_var_opens_the_gate() -> None:
         cwd=str(_ROOT), env=env, capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "True"
+    assert completed.stdout.strip() == "False"
 
 
 def test_cli_rejects_any_argv_without_touching_gate() -> None:
@@ -713,18 +740,21 @@ def test_full_runner_keyboard_interrupt_via_cli_returns_130(monkeypatch) -> None
 # --------------------------------------------------------------------- #
 # H. P23: SIGTERM gestionado, argv real del CLI, llamadas unicas.        #
 #                                                                         #
-# ADVERTENCIA para quien anada tests a este archivo: tras P23, el valor  #
-# VIGENTE (no parcheado) de ``runner.REAL_TEST_EVALUATION_AUTHORIZED``   #
-# es ``True`` (una unica ejecucion manual autorizada, ver               #
-# ``final_sealed_evaluation.py``). Invocar ``runner.main()`` sin         #
-# argumentos o ``execute_real_sealed_test_evaluation()`` sin             #
-# ``source_reader`` explicito, SIN antes parchear la puerta a False o    #
-# sustituir ``execute_real_sealed_test_evaluation``/``source_reader``,   #
-# dispara una LECTURA REAL del Parquet contractual. Cada test que        #
-# ejercite el camino "puerta cerrada" debe parchear explicitamente a     #
-# False; cada test que ejercite el camino "autorizado" debe seguir       #
-# inyectando un ``source_reader`` sintetico como ya hace el resto de     #
-# este archivo.                                                         #
+# ADVERTENCIA para quien anada tests a este archivo: el valor VIGENTE    #
+# (no parcheado) de ``runner.REAL_TEST_EVALUATION_AUTHORIZED`` puede     #
+# cambiar entre revisiones (``True`` mientras una unica ejecucion manual #
+# siga autorizada y pendiente; ``False`` tras el cierre P23 por fallo,   #
+# estado actual, o en cualquier otro momento sin autorizacion activa).   #
+# Invocar ``runner.main()`` sin argumentos o                             #
+# ``execute_real_sealed_test_evaluation()`` sin ``source_reader``        #
+# explicito, SIN antes parchear la puerta a False o sustituir            #
+# ``execute_real_sealed_test_evaluation``/``source_reader``, dispara una #
+# LECTURA REAL del Parquet contractual si la puerta llegase a estar en   #
+# True. Cada test que ejercite el camino "puerta cerrada" parchea        #
+# explicitamente a False; cada test que ejercite el camino "autorizado"  #
+# sigue inyectando un ``source_reader`` sintetico como ya hace el resto  #
+# de este archivo -- disciplina que se mantiene independientemente del   #
+# valor por defecto vigente en cada momento.                             #
 # --------------------------------------------------------------------- #
 
 
@@ -857,8 +887,9 @@ def test_cli_subprocess_real_argv_rejects_unknown_flags_with_exit_2() -> None:
     ejecucion real (cualquier flag tecleado por un usuario se ignoraba
     en silencio). Solo se invoca aqui con argumentos que DEBEN
     rechazarse antes de tocar la puerta o cualquier I/O (salida 2);
-    nunca sin argumentos, para no arriesgar una evaluacion real ahora
-    que la puerta vale True (P23)."""
+    nunca sin argumentos, para no arriesgar una evaluacion real si la
+    puerta llegase a estar en True (hoy esta en False, tras el cierre
+    P23 por fallo, pero este test no depende de ese valor)."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_ROOT)
     for bad_args in (["--force"], ["--retry"], ["some-positional-path"]):

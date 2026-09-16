@@ -481,38 +481,47 @@ def compute_specification_fingerprint(
 # Puerta de autorizacion unica (P20 -> P21): ninguna via alternativa     #
 # --------------------------------------------------------------------- #
 
-REAL_TEST_EVALUATION_AUTHORIZED: Final = True
+REAL_TEST_EVALUATION_AUTHORIZED: Final = False
 
-# P23: autorizacion puntual para UNA UNICA ejecucion manual y desacoplada,
-# concedida tras una auditoria completa de P20-P22 (dos defectos de
-# senal/cierre -- ausencia de manejo de SIGTERM y ``sys.argv`` no
-# propagado a ``main()`` en ``final_sealed_evaluation_runner.py`` --
-# encontrados y corregidos ANTES de autorizar, nunca despues).
+# P23: cierre inmediato tras el UNICO intento autorizado (concedido
+# tras una auditoria completa de P20-P22 que encontro y corrigio dos
+# defectos de senal/cierre -- ausencia de manejo de SIGTERM y
+# ``sys.argv`` no propagado a ``main()`` en
+# ``final_sealed_evaluation_runner.py`` -- ANTES de autorizar, nunca
+# despues). Ese intento se inicio exactamente una vez en Mac, el
+# supervisor y el proceso analitico terminaron, y fallo ANTES de
+# publicar el bundle: exit code exacto ``1``, sin
+# ``reports/final_evaluation/`` creado, log externo de 0 bytes, sin
+# procesos residuales, sin SIGINT/SIGTERM conocido -- se clasifica como
+# ejecucion FALLIDA, no interrumpida.
 #
-# Regla de cierre OBLIGATORIA: en cuanto la ejecucion autorizada arriba
-# termine -- completada, fallida o interrumpida -- un COMMIT POSTERIOR
-# debe devolver esta constante a ``False`` y actualizar los cuatro
-# contadores de abajo. Esta autorizacion nunca se reutiliza para una
-# segunda ejecucion; una nueva evaluacion exigiria una nueva decision
-# humana explicita repitiendo este mismo preflight.
+# Diagnostico pendiente: esta autorizacion no se reutiliza. Ninguna
+# ejecucion adicional queda autorizada por este cierre; una futura
+# evaluacion exigiria una decision humana y una autorizacion
+# INDEPENDIENTES (repitiendo el preflight completo), nunca un
+# reintento del mismo proceso ni una reapertura silenciosa de la
+# puerta.
 REAL_TEST_EVALUATION_AUTHORIZATION_REASON: Final = (
-    "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+    "real_test_evaluation_failed_pending_diagnosis_no_further_execution_authorized"
 )
 
-# El test aun no se ha evaluado: los cuatro contadores permanecen en
-# cero hasta que la unica ejecucion autorizada arriba se complete, falle
-# o se interrumpa (ver regla de cierre justo encima). A diferencia de
-# P15/P16 (snapshot de validacion, ya ejecutado una vez), P20 no tenia
-# ninguna ejecucion real previa que registrar.
-PREVIOUS_REAL_TEST_EVALUATIONS: Final = 0
+# Intento consumido: PREVIOUS=1 (el unico intento autorizado ya ocurrio),
+# COMPLETED=0 (fallo antes de publicar el bundle, nunca llego a
+# completarse), INTERRUPTED=0 (fue un fallo, no una interrupcion por
+# senal conocida), RETRIES=0 (sin reintento automatico bajo ninguna
+# circunstancia). No existe en este contrato un contador explicito de
+# fallos separado: el fallo queda representado por esta combinacion
+# exacta (previous=1, completed=0, interrupted=0) junto con la razon de
+# cierre de arriba.
+PREVIOUS_REAL_TEST_EVALUATIONS: Final = 1
 COMPLETED_REAL_TEST_EVALUATIONS: Final = 0
 INTERRUPTED_REAL_TEST_EVALUATIONS: Final = 0
 AUTOMATIC_RETRIES_PERFORMED: Final = 0
 
-# Sin reintento automatico bajo ninguna circunstancia: un fallo o una
-# interrupcion consumen la unica autorizacion de arriba (regla de
-# cierre); una segunda ejecucion exige una NUEVA decision humana
-# explicita, nunca un reintento silencioso del mismo proceso.
+# Sin reintento automatico bajo ninguna circunstancia: el fallo del
+# unico intento autorizado consume esa autorizacion (regla de cierre);
+# una segunda ejecucion exige una NUEVA decision humana explicita,
+# nunca un reintento silencioso del mismo proceso.
 AUTOMATIC_RETRY: Final = False
 AUTOMATIC_RETRY_POLICY: Final = "single_manual_execution_without_automatic_retry"
 
@@ -533,17 +542,18 @@ def run_real_test_evaluation(*_args: object, **_kwargs: object) -> None:
 
     Firma deliberadamente generica (``*_args``/``**_kwargs``): no
     acepta ninguna ruta real ni configuracion externa. Estado VIGENTE
-    tras P23: ``REAL_TEST_EVALUATION_AUTHORIZED = True`` (una unica
-    ejecucion manual autorizada, razon
-    ``REAL_TEST_EVALUATION_AUTHORIZATION_REASON``; ver regla de cierre
-    junto a la constante, que la devolvera a ``False`` en un commit
-    posterior tras completar, fallar o interrumpir esa ejecucion). En
-    ese estado esta funcion SI delega a la frontera productiva real
-    (import local, ver abajo). Cuando la constante vuelva a valer
-    ``False``, esta funcion abortara de nuevo antes de tocar
-    ``os.environ``, Parquet, CSV, el snapshot privado o cualquier
-    lector real; no hay ninguna otra via de ejecucion en ningun caso
-    (ni variable de entorno, ni flag, ni segunda constante).
+    (P23, cierre tras fallo): ``False`` -- el unico intento autorizado
+    ya ocurrio (en Mac) y fallo ANTES de publicar el bundle (exit code
+    ``1``, sin ``reports/final_evaluation/`` creado; ver razon exacta
+    en ``REAL_TEST_EVALUATION_AUTHORIZATION_REASON`` y el historial en
+    ``PREVIOUS_REAL_TEST_EVALUATIONS=1``/``COMPLETED_REAL_TEST_
+    EVALUATIONS=0``). Diagnostico pendiente: ninguna nueva ejecucion
+    queda autorizada por este cierre; una futura evaluacion exigiria
+    una decision humana y una autorizacion independientes. En este
+    estado esta funcion aborta antes de tocar ``os.environ``, Parquet,
+    CSV, el snapshot privado o cualquier lector real; no hay ninguna
+    otra via de ejecucion en ningun caso (ni variable de entorno, ni
+    flag, ni segunda constante).
 
     P22 (``src.analysis.final_sealed_evaluation_runner``) completo la
     frontera productiva real: el ``import`` es local (dentro de esta
@@ -635,10 +645,14 @@ def publish_preflight_manifest(path: Path | None = None) -> Path:
     """Escribe el manifiesto de forma atomica (mkstemp + os.replace).
 
     Sin resultados reales en ningun caso: ``authorized`` refleja la
-    constante del modulo tal cual (``False`` o, tras P23, ``True``
-    mientras la unica ejecucion autorizada siga pendiente) y los
-    cuatro contadores de ejecucion permanecen en cero hasta que esa
-    ejecucion se complete, falle o se interrumpa. Este manifiesto no
+    constante del modulo tal cual (``True`` solo mientras una unica
+    ejecucion manual siga autorizada y pendiente; ``False`` en
+    cualquier otro momento, incluido tras el cierre posterior a un
+    intento completado, fallido o interrumpido). Los cuatro contadores
+    de ejecucion reflejan el historial exacto tal cual (no son siempre
+    cero: tras el cierre de un intento fallido,
+    ``PREVIOUS_REAL_TEST_EVALUATIONS`` pasa a contar ese intento aunque
+    ``COMPLETED``/``INTERRUPTED`` sigan en cero). Este manifiesto no
     lee ningun dato de origen ni ejecuta nada; su unica entrada es la
     especificacion congelada de este modulo.
     """

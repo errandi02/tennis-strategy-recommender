@@ -4,11 +4,13 @@ abre el snapshot privado ni ejecuta P10 real: todo dato es sintetico o
 proviene exclusivamente de constantes/contratos ya publicados.
 
 Verifican: configuracion exacta frozen, dataclass inmutable, huella
-independiente, puerta de autorizacion unica (estado vigente tras P23:
-``True``, una unica ejecucion manual autorizada, con razon exacta y
-contadores en cero; el camino "puerta cerrada" se ejercita parcheando
-explicitamente a False), bloqueo antes de cualquier I/O, cero
-reintentos, temporalidad exacta (cruzada contra
+independiente, puerta de autorizacion unica (estado vigente tras el
+cierre P23 por fallo: ``False``, con razon exacta de cierre,
+``PREVIOUS_REAL_TEST_EVALUATIONS=1`` y ``COMPLETED``/``INTERRUPTED``/
+``AUTOMATIC_RETRIES_PERFORMED`` en cero; el camino "puerta autorizada"
+se ejercita parcheando explicitamente a True donde hace falta),
+bloqueo antes de cualquier I/O, cero reintentos, temporalidad exacta
+(cruzada contra
 ``chronological_validation.py`` como autoridad independiente),
 denominadores de metricas (abstenciones, partially_available, labels
 ausentes, empates, errores upstream, 2026 parcial), alcance de
@@ -172,18 +174,23 @@ def test_specification_fingerprint_is_deterministic() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_single_authorization_gate_is_true_with_closure_contract() -> None:
-    """P23: autorizacion puntual para UNA UNICA ejecucion manual, tras
-    auditoria completa de P20-P22 sin defectos bloqueantes restantes.
-    Razon y politica de cierre son literales exactos; los cuatro
-    contadores permanecen en cero hasta que esa unica ejecucion se
-    complete, falle o se interrumpa -- momento en el que un COMMIT
-    POSTERIOR (no este) debe devolver la puerta a False."""
-    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
+def test_single_authorization_gate_is_false_with_failure_closure_contract() -> None:
+    """P23 cierre tras fallo: el unico intento autorizado ya ocurrio (en
+    Mac), el supervisor y el proceso analitico terminaron con exit code
+    exacto 1, sin ``reports/final_evaluation/`` creado, log externo de
+    0 bytes, sin procesos residuales y sin SIGINT/SIGTERM conocido --
+    se clasifica como ejecucion FALLIDA, no interrumpida. Razon de
+    cierre y politica de reintento son literales exactos. El intento
+    queda consumido: ``PREVIOUS=1`` (ya ocurrio), ``COMPLETED=0`` (no
+    llego a publicar), ``INTERRUPTED=0`` (fallo, no interrupcion),
+    ``RETRIES=0`` (sin reintento automatico). No existe en este
+    contrato un contador explicito de fallos separado -- el fallo
+    queda representado por esta combinacion exacta junto con la razon."""
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is False
     assert p20.REAL_TEST_EVALUATION_AUTHORIZATION_REASON == (
-        "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+        "real_test_evaluation_failed_pending_diagnosis_no_further_execution_authorized"
     )
-    assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 0
+    assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 1
     assert p20.COMPLETED_REAL_TEST_EVALUATIONS == 0
     assert p20.INTERRUPTED_REAL_TEST_EVALUATIONS == 0
     assert p20.AUTOMATIC_RETRIES_PERFORMED == 0
@@ -196,13 +203,12 @@ def test_single_authorization_gate_is_true_with_closure_contract() -> None:
 def test_run_real_test_evaluation_raises_systemexit_before_any_io(
     monkeypatch,
 ) -> None:
-    """Ejercita deliberadamente la rama con la puerta CERRADA (parcheada
-    a False aqui): el valor real y vigente del modulo es True tras
-    P23 (una unica ejecucion manual autorizada), pero esta rama de
-    codigo debe seguir siendo correcta para el estado POSTERIOR al
-    cierre (tras completar/fallar/interrumpir esa ejecucion, un commit
-    futuro vuelve la constante a False; este test protege ese camino
-    sin depender de si ya ocurrio)."""
+    """Estado vigente tras el cierre P23: la puerta ya esta en False (el
+    unico intento autorizado fallo y quedo consumido; diagnostico
+    pendiente, sin nueva autorizacion). Se parchea a False de forma
+    explicita de todos modos, para que este test siga protegiendo la
+    rama cerrada aunque una futura reautorizacion vuelva a poner la
+    constante en True."""
     monkeypatch.setattr(p20, "REAL_TEST_EVALUATION_AUTHORIZED", False)
 
     def _forbidden(*_args, **_kwargs):
@@ -229,12 +235,12 @@ def test_run_real_test_evaluation_never_retries_and_is_idempotent(
 
 def test_no_bypass_env_var_or_cli_flag_exists() -> None:
     """No existe segunda puerta: ninguna variable de entorno cambia el
-    valor de la constante del modulo. Se envenena con "false" -- el
-    valor OPUESTO al real (True tras P23) -- para demostrar que el
-    entorno tampoco puede APAGARLA, no solo que no puede encenderla."""
+    valor de la constante del modulo. Se envenena con "true" -- el
+    valor OPUESTO al real (False tras el cierre P23 por fallo) -- para
+    demostrar que el entorno tampoco puede REABRIRLA."""
     monkeypatch_env = dict(os.environ)
-    monkeypatch_env["REAL_TEST_EVALUATION_AUTHORIZED"] = "false"
-    monkeypatch_env["TENNIS_FINAL_EVALUATION_FORCE"] = "0"
+    monkeypatch_env["REAL_TEST_EVALUATION_AUTHORIZED"] = "true"
+    monkeypatch_env["TENNIS_FINAL_EVALUATION_FORCE"] = "1"
     completed = subprocess.run(
         [
             sys.executable,
@@ -249,7 +255,7 @@ def test_no_bypass_env_var_or_cli_flag_exists() -> None:
         check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "True"
+    assert completed.stdout.strip() == "False"
 
 
 # --------------------------------------------------------------------- #
@@ -458,7 +464,7 @@ def test_import_subprocess_sin_efectos(tmp_path) -> None:
         check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "True"
+    assert completed.stdout.strip() == "False"
     assert completed.stderr == ""
     after = {item.name for item in tmp_path.iterdir()}
     assert after == before
@@ -475,16 +481,18 @@ def test_no_real_source_reader_referenced_anywhere() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_manifest_status_preflight_authorized_true_zero_counts() -> None:
-    """Tras P23, ``authorized`` refleja la constante vigente (True para
-    la unica ejecucion manual autorizada); los contadores permanecen en
-    cero porque esa ejecucion aun no se ha completado, fallado ni
-    interrumpido."""
+def test_manifest_status_preflight_authorized_false_after_failure_closure() -> None:
+    """Tras el cierre P23 por fallo, ``authorized`` refleja la
+    constante vigente (False: el unico intento se consumio y fallo);
+    ``previous_real_test_evaluations`` pasa a 1 (ya ocurrio), mientras
+    ``test_evaluation_runs`` (completados) e ``interrupted``/
+    ``automatic_retries_performed`` permanecen en cero (no llego a
+    publicar, no fue interrupcion, sin reintento)."""
     manifest = p20.build_preflight_manifest()
     assert manifest["status"] == "preflight_only"
-    assert manifest["authorized"] is True
+    assert manifest["authorized"] is False
     assert manifest["test_evaluation_runs"] == 0
-    assert manifest["previous_real_test_evaluations"] == 0
+    assert manifest["previous_real_test_evaluations"] == 1
     assert manifest["interrupted_real_test_evaluations"] == 0
     assert manifest["automatic_retries_performed"] == 0
     assert manifest["no_real_metrics_observed"] is True
@@ -507,7 +515,8 @@ def test_publish_preflight_manifest_writes_atomically(tmp_path) -> None:
     assert destination.is_file()
     loaded = json.loads(destination.read_text(encoding="utf-8"))
     assert loaded["status"] == "preflight_only"
-    assert loaded["authorized"] is True
+    assert loaded["authorized"] is False
+    assert loaded["previous_real_test_evaluations"] == 1
     remaining = list(tmp_path.iterdir())
     assert remaining == [destination]
 

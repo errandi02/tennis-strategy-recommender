@@ -237,9 +237,9 @@ idéntica para `rolling_origin` y `frozen`, `null` si el denominador
 etiquetado es cero, con numerador/denominador/regla/fingerprint propio
 incluidos explícitamente en la serialización agregada.
 
-**Artefactos finales** (aún no generados: ver P23 para el estado de la
-autorización y la ejecución pendiente): un único bundle atómico, nunca
-cinco archivos sueltos —
+**Artefactos finales** (aún no generados: el único intento autorizado
+falló antes de publicar el bundle; ver P23 para los hechos exactos y
+el cierre): un único bundle atómico, nunca cinco archivos sueltos —
 
 ```
 reports/final_evaluation/
@@ -275,41 +275,67 @@ modo que `main()` reporte salida `130` (interrupción) en vez de `1`
 (fallo ordinario). Sin esta salvaguarda, un `SIGTERM` real durante la
 escritura dejaba un directorio temporal huérfano bajo `reports/`.
 
-### Autorización puntual de una única evaluación real (P23)
+### Cierre tras la única evaluación real autorizada — fallo (P23)
 
 Tras una auditoría completa de P20-P22 que encontró y corrigió dos
 defectos de cierre antes de autorizar (la gestión de `SIGTERM` descrita
 arriba, y un `sys.argv` que nunca llegaba a `main()` en el guard
 `if __name__ == "__main__":` del runner, dejando el rechazo de
-argumentos como código muerto en ejecución real), queda abierta una
-**única** autorización manual:
+argumentos como código muerto en ejecución real), se concedió una
+**única** autorización manual y se ejecutó exactamente una vez en Mac
+con el comando de la sección siguiente.
+
+**Hechos observados de esa ejecución:**
+
+- La ejecución autorizada se inició exactamente una vez.
+- El supervisor (`caffeinate`) y el proceso analítico (wrapper + Python)
+  finalizaron.
+- Código de salida exacto: `1` (fallo ordinario).
+- `reports/final_evaluation/` no se creó: el fallo ocurrió **antes de
+  publicar el bundle**.
+- Log externo (`~/Documents/final_sealed_evaluation.log`): 0 bytes.
+- Sin procesos residuales.
+- No fue `SIGINT`/`SIGTERM` conocido → se clasifica como **ejecución
+  fallida, no interrumpida**.
+
+**Cierre contractual aplicado** (commit posterior a la ejecución, tal
+como exigía la regla de cierre de P23):
 
 ```python
-REAL_TEST_EVALUATION_AUTHORIZED: Final = True
+REAL_TEST_EVALUATION_AUTHORIZED: Final = False
 REAL_TEST_EVALUATION_AUTHORIZATION_REASON: Final = (
-    "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+    "real_test_evaluation_failed_pending_diagnosis_no_further_execution_authorized"
 )
+PREVIOUS_REAL_TEST_EVALUATIONS: Final = 1
+COMPLETED_REAL_TEST_EVALUATIONS: Final = 0
+INTERRUPTED_REAL_TEST_EVALUATIONS: Final = 0
+AUTOMATIC_RETRIES_PERFORMED: Final = 0
 AUTOMATIC_RETRY: Final = False
 AUTOMATIC_RETRY_POLICY: Final = "single_manual_execution_without_automatic_retry"
 ```
 
-Los cuatro contadores (`PREVIOUS_REAL_TEST_EVALUATIONS`,
-`COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`,
-`AUTOMATIC_RETRIES_PERFORMED`) permanecen en cero. **Regla de cierre
-obligatoria**: en cuanto la ejecución autorizada se complete, falle o
-se interrumpa, un commit posterior debe devolver
-`REAL_TEST_EVALUATION_AUTHORIZED` a `False` y actualizar esos
-contadores; esta autorización nunca se reutiliza para una segunda
-ejecución.
+El intento queda **consumido**: `PREVIOUS_REAL_TEST_EVALUATIONS=1`
+registra que ya ocurrió; `COMPLETED_REAL_TEST_EVALUATIONS=0` porque no
+llegó a publicar; `INTERRUPTED_REAL_TEST_EVALUATIONS=0` porque fue un
+fallo, no una interrupción por señal; `AUTOMATIC_RETRIES_PERFORMED=0`
+porque no hubo ni habrá reintento automático bajo ninguna
+circunstancia. **Diagnóstico pendiente**: esta autorización no se
+reutiliza — ninguna ejecución adicional queda habilitada por este
+cierre. Una futura evaluación exige una **decisión humana y una
+autorización independientes** (repitiendo el preflight completo), no
+un reintento del mismo proceso ni una reapertura silenciosa de la
+puerta.
 
-**Comando exacto para la ejecución manual y desacoplada en Mac (NO
-EJECUTADO todavía)**. El CLI del runner ya es el "CLI mínimo cerrado"
-requerido: sin ruta alternativa a la fuente, sin `--force`/`--retry`,
-rechaza cualquier `argv` con salida `2` antes de tocar la puerta, y no
-necesita ningún argumento (por lo que no se pasa ninguna ruta privada
-por línea de comandos). Requiere haber activado antes el entorno conda
-correcto en esa misma terminal (`conda activate tennis-tfm`), para que
-el `python` heredado por el proceso desacoplado sea el correcto:
+**Comando ejecutado en Mac** (ya ejecutado; resultado: fallo, exit `1`;
+se conserva aquí como referencia exacta y como base para una futura
+re-autorización, no como instrucción pendiente). El CLI del runner ya
+es el "CLI mínimo cerrado" requerido: sin ruta alternativa a la fuente,
+sin `--force`/`--retry`, rechaza cualquier `argv` con salida `2` antes
+de tocar la puerta, y no necesita ningún argumento (por lo que no se
+pasa ninguna ruta privada por línea de comandos). Requiere haber
+activado antes el entorno conda correcto en esa misma terminal
+(`conda activate tennis-tfm`), para que el `python` heredado por el
+proceso desacoplado sea el correcto:
 
 ```bash
 cd /ruta/al/repo/tennis-strategy-recommender || exit 1

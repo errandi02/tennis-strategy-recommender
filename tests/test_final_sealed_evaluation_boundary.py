@@ -94,7 +94,7 @@ def test_import_subprocess_sin_efectos(tmp_path) -> None:
         cwd=str(tmp_path), env=env, capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "True"
+    assert completed.stdout.strip() == "False"
     assert completed.stderr == ""
     after = {item.name for item in tmp_path.iterdir()}
     assert after == before
@@ -653,28 +653,32 @@ def test_population_evaluation_deterministic_under_shuffled_observation_order() 
 # --------------------------------------------------------------------- #
 
 
-def test_authorization_gate_still_true_and_reused_not_redefined() -> None:
-    """P23: la puerta reexportada por P21 sigue siendo LA MISMA de P20
-    (True, la unica ejecucion manual autorizada), nunca una segunda
-    constante independiente. Contadores en cero: la ejecucion aun no
-    se ha completado, fallado ni interrumpido."""
+def test_authorization_gate_still_false_after_failure_closure_and_reused_not_redefined() -> None:
+    """P23 cierre tras fallo: la puerta reexportada por P21 sigue siendo
+    LA MISMA de P20 (False, tras consumirse el unico intento
+    autorizado, que fallo antes de publicar), nunca una segunda
+    constante independiente. ``PREVIOUS=1`` (ya ocurrio),
+    ``COMPLETED``/``INTERRUPTED``/``AUTOMATIC_RETRIES_PERFORMED`` en
+    cero (no publico, no fue interrupcion, sin reintento)."""
     import src.analysis.final_sealed_evaluation as p20
 
-    assert boundary.REAL_TEST_EVALUATION_AUTHORIZED is True
+    assert boundary.REAL_TEST_EVALUATION_AUTHORIZED is False
     assert boundary.REAL_TEST_EVALUATION_AUTHORIZED is p20.REAL_TEST_EVALUATION_AUTHORIZED
     assert boundary.REAL_TEST_EVALUATION_BLOCK_REASON == p20.REAL_TEST_EVALUATION_BLOCK_REASON
-    assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 0
+    assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 1
     assert p20.COMPLETED_REAL_TEST_EVALUATIONS == 0
     assert p20.INTERRUPTED_REAL_TEST_EVALUATIONS == 0
     assert p20.AUTOMATIC_RETRIES_PERFORMED == 0
 
 
 def test_run_real_test_evaluation_still_aborts_before_io(monkeypatch) -> None:
-    """Ejercita deliberadamente la rama con la puerta CERRADA (parcheada
-    a False aqui, en el modulo P20 real que define la funcion -- no en
-    ``boundary``, que solo reexporta el mismo objeto de funcion). El
-    valor vigente hoy es True (P23); este test protege el camino
-    POSTERIOR al cierre de esa unica ejecucion autorizada."""
+    """Estado vigente tras el cierre P23: la puerta ya esta en False (el
+    unico intento autorizado fallo y quedo consumido). Se parchea a
+    False de forma explicita de todos modos, en el modulo P20 real que
+    define la funcion (no en ``boundary``, que solo reexporta el mismo
+    objeto de funcion), para que este test siga protegiendo la rama
+    cerrada aunque una futura reautorizacion vuelva a poner la
+    constante en True."""
     import src.analysis.final_sealed_evaluation as p20
 
     monkeypatch.setattr(p20, "REAL_TEST_EVALUATION_AUTHORIZED", False)
@@ -689,12 +693,13 @@ def test_run_real_test_evaluation_still_aborts_before_io(monkeypatch) -> None:
 
 
 def test_no_bypass_env_var_opens_the_gate() -> None:
-    """Envenena con "false" -- el OPUESTO del valor real (True tras
-    P23) -- para demostrar que el entorno tampoco puede apagarla."""
+    """Envenena con "true" -- el OPUESTO del valor real (False tras el
+    cierre P23 por fallo) -- para demostrar que el entorno tampoco
+    puede REABRIRLA."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_ROOT)
-    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "false"
-    env["TENNIS_FINAL_EVALUATION_FORCE"] = "0"
+    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "true"
+    env["TENNIS_FINAL_EVALUATION_FORCE"] = "1"
     completed = subprocess.run(
         [
             sys.executable, "-c",
@@ -704,7 +709,7 @@ def test_no_bypass_env_var_opens_the_gate() -> None:
         cwd=str(_ROOT), env=env, capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "True"
+    assert completed.stdout.strip() == "False"
 
 
 def test_boundary_functions_have_no_file_or_cli_parameters() -> None:

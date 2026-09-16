@@ -5,11 +5,18 @@ Gobernado por la UNICA puerta
 reasignar aqui: solo se importa y se lee). Con la puerta en ``False``,
 ``execute_real_sealed_test_evaluation`` aborta en su primer paso,
 antes de cualquier ``open``, ``stat`` de la fuente, pandas/pyarrow,
-lectura, construccion o escritura. Autorizacion puntual (P23): una
-UNICA ejecucion manual y desacoplada queda autorizada -- ver
-``final_sealed_evaluation.py`` para el contrato exacto de cierre
-(un commit posterior debe devolver la puerta a ``False`` y
-actualizar los contadores tras completar/fallar/interrumpir).
+lectura, construccion o escritura. Cierre P23 tras fallo: el unico
+intento autorizado ya ocurrio (en Mac) y fallo antes de publicar el
+bundle (exit code ``1``, sin bundle, sin senal conocida); ver
+``final_sealed_evaluation.py`` para la razon exacta de cierre y el
+historial. Ninguna ejecucion adicional queda autorizada por este
+cierre; una futura evaluacion exigiria una decision humana y una
+autorizacion independientes. Ademas, la regla de cierre estandar
+(aplica a cualquier autorizacion futura, no solo a la ya cerrada)
+exige que, en cuanto una ejecucion autorizada termine -- completada,
+fallida o interrumpida --, un commit posterior devuelva la puerta a
+``False`` y actualice los contadores; esta puerta nunca se reutiliza
+para una segunda ejecucion sin ese cierre explicito.
 
 Bundle atomico (revision tras hallazgo de diseno): cinco ``os.replace``
 independientes con rollback NO son una transaccion -- durante la
@@ -617,11 +624,14 @@ def execute_real_sealed_test_evaluation(
     pasos. Aborta en el paso 1 -- antes de ``open``, ``stat`` de la
     fuente, pandas/pyarrow, lectura, construccion o escritura --
     unicamente cuando ``REAL_TEST_EVALUATION_AUTHORIZED`` vale
-    ``False``. Estado VIGENTE tras P23: ``True`` (una unica ejecucion
-    manual autorizada; ver ``final_sealed_evaluation.py`` para la razon
-    exacta y la regla de cierre que la devolvera a ``False`` en un
-    commit posterior tras completar, fallar o interrumpir esa
-    ejecucion).
+    ``False``. Estado VIGENTE (P23, cierre tras fallo): ``False`` -- el
+    unico intento autorizado ya ocurrio y fallo antes de publicar el
+    bundle (exit code ``1``, sin ``reports/final_evaluation/`` creado);
+    ver ``final_sealed_evaluation.py`` para la razon exacta de cierre y
+    el historial (``PREVIOUS_REAL_TEST_EVALUATIONS=1``). Diagnostico
+    pendiente: ninguna nueva ejecucion queda autorizada por este
+    cierre; una futura evaluacion exigiria una decision humana y una
+    autorizacion independientes.
 
     Los pasos 2-9 se ejecutan bajo ``_normalize_execution_signals``:
     un SIGTERM/SIGINT en cualquier punto se convierte en
