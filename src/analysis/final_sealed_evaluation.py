@@ -505,19 +505,27 @@ def run_real_test_evaluation(*_args: object, **_kwargs: object) -> None:
     """Frontera bloqueada: aborta ANTES de cualquier I/O si no autorizado.
 
     Firma deliberadamente generica (``*_args``/``**_kwargs``): no
-    existe todavia ningun lector real, ningun CLI documentado ni
-    ninguna ruta real que aceptar. Con
+    acepta ninguna ruta real ni configuracion externa. Con
     ``REAL_TEST_EVALUATION_AUTHORIZED=False`` (el unico valor posible
     hoy) esta funcion SIEMPRE aborta antes de tocar ``os.environ``,
     Parquet, CSV, el snapshot privado o cualquier lector real.
+
+    P22 (``src.analysis.final_sealed_evaluation_runner``) completo la
+    frontera productiva real: el ``import`` es local (dentro de esta
+    funcion, no a nivel de modulo) para que ``final_sealed_evaluation``
+    siga sin ningun efecto ni dependencia de pandas/pyarrow al
+    importarse, y para evitar un ciclo de importacion con el runner
+    (que si importa este modulo). La linea de abajo permanece
+    INALCANZABLE mientras ``REAL_TEST_EVALUATION_AUTHORIZED`` sea
+    ``False``; no hay ninguna otra via de ejecucion.
     """
     if not REAL_TEST_EVALUATION_AUTHORIZED:
         raise SystemExit(REAL_TEST_EVALUATION_BLOCK_REASON)
-    # Inalcanzable mientras REAL_TEST_EVALUATION_AUTHORIZED sea False:
-    # P21 definira aqui la frontera real (fuera del alcance de P20).
-    raise FinalSealedEvaluationContractError(
-        "P21 no implementado: no existe evaluacion real todavia."
+    from src.analysis.final_sealed_evaluation_runner import (  # noqa: PLC0415
+        execute_real_sealed_test_evaluation,
     )
+
+    execute_real_sealed_test_evaluation()
 
 
 PREFLIGHT_MANIFEST_PATH: Final = (

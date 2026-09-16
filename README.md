@@ -214,6 +214,53 @@ la evaluación real; P20 no la habilita. Ninguna política, threshold,
 scoring o modelo puede ajustarse después de observar cualquier
 resultado del test, bajo ningún protocolo.
 
+### Ruta productiva completa, aún cerrada (P21-P22)
+
+P21 añadió el adaptador y evaluador compute-only (`src/analysis/
+final_sealed_evaluation_{adapter,orchestrator}.py`); P22 completó la
+ruta productiva con `src/analysis/final_sealed_evaluation_runner.py`,
+de modo que una futura autorización solo necesita cambiar
+`REAL_TEST_EVALUATION_AUTHORIZED` (en `final_sealed_evaluation.py`,
+única asignación en todo el repositorio; `final_sealed_evaluation.py`
+delega a este runner mediante un import local, sin reasignar la
+puerta). Los contadores `PREVIOUS_REAL_TEST_EVALUATIONS`,
+`COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`
+y `AUTOMATIC_RETRIES_PERFORMED` permanecen en cero.
+
+**Baseline poblacional P02** (decisión humana congelada, contrato
+propio de P22 — no forma parte de la especificación ni del fingerprint
+de P20): tasa fija única, calculada exclusivamente con intentos P02
+etiquetados de desarrollo (fecha máxima 2023-12-31 por construcción),
+idéntica para `rolling_origin` y `frozen`, `null` si el denominador
+etiquetado es cero, con numerador/denominador/regla/fingerprint propio
+incluidos explícitamente en la serialización agregada.
+
+**Artefactos finales** (aún no generados: `REAL_TEST_EVALUATION_AUTHORIZED`
+sigue en `False`): un único bundle atómico, nunca cinco archivos
+sueltos —
+
+```
+reports/final_evaluation/
+  summary.json
+  performance.json
+  tables/
+    coverage.csv
+    p02_performance.csv
+    secondary_metrics.csv
+```
+
+Publicación mediante un directorio temporal hermano bajo `reports/`
+(mismo sistema de archivos), contenido completo escrito y verificado
+ahí dentro, y un **único** `os.replace` de directorio al destino final
+(que debe no existir previamente); sin esa garantía atómica la
+publicación falla de forma cerrada, nunca degrada a publicaciones
+archivo por archivo. Solo `src.analysis.final_sealed_evaluation_runner
+.execute_real_sealed_test_evaluation` (bajo autorización) construye y
+publica este bundle; el adaptador y el orquestador son funciones puras
+sin conocimiento de la autorización, por lo que la garantía de "cero
+evaluación real" depende de no invocarlos nunca directamente con datos
+reales fuera de esa única frontera productiva.
+
 ## Primer hito
 
 Demostrar empíricamente la viabilidad del Match Charting Project:

@@ -1758,22 +1758,34 @@ def _documents_service_fault(extraction: AttemptSignalExtraction) -> bool:
     )
 
 
-def construct_tactical_attempt_records(
-    development: pd.DataFrame,
+def _convert_points_to_attempt_records(
+    points: pd.DataFrame,
     schema: TacticalFeatureSchema,
     *,
+    max_effective_date: date,
     orchestrator: Callable[[AttemptSignalRequest], AttemptSignalExtraction] = extract_tactical_signals_for_attempt,
     encoder: Callable[[AttemptSignalExtraction, TacticalFeatureSchema], TacticalFeatureVector] = encode_tactical_attempt,
 ) -> TacticalAttemptBatch:
-    """Construye intentos y reutiliza una cache local completa por contexto."""
-    if not isinstance(development, pd.DataFrame) or tuple(development.columns) != SOURCE_COLUMNS:
+    """Conversion pura y SIN gate temporal: ``points`` (schema canonico,
+    YA particionados por el llamador) -> ``TacticalAttemptBatch``.
+
+    Unica implementacion de la semantica punto-a-intento (``_point_seeds``
+    + resolucion orquestador/encoder + ensamblado del registro):
+    ``construct_tactical_attempt_records`` (desarrollo, con su gate
+    ``DEVELOPMENT_CUTOFF``) y
+    ``construct_tactical_attempt_records_for_test_partition`` (test, con
+    su propio gate simetrico ``[TEST_START, EXPECTED_LAST_DATE]``) son
+    los DOS UNICOS llamadores autorizados, cada uno imponiendo su propio
+    limite temporal ANTES de delegar aqui. Esta funcion privada no
+    impone ningun limite de fecha por si misma: la responsabilidad del
+    sellado es exclusiva de cada wrapper cerrado, nunca de un tercer
+    llamador generico."""
+    if not isinstance(points, pd.DataFrame) or tuple(points.columns) != SOURCE_COLUMNS:
         raise TacticalPipelineContractError("Development debe conservar el schema validado.")
-    if bool(development.date.gt(DEVELOPMENT_CUTOFF).any()):
-        raise TacticalPipelineContractError("El test alcanzo el constructor de intentos.")
     validate_tactical_feature_schema(schema)
     started = perf_counter()
     try:
-        seeds = _point_seeds(development)
+        seeds = _point_seeds(points)
     except TacticalPipelineExecutionError:
         raise
     except Exception as error:
@@ -1898,21 +1910,97 @@ def construct_tactical_attempt_records(
         attempt_construction_seconds=attempt_seconds,
         extraction_and_encoding_seconds=extraction_seconds,
     )
-    validate_tactical_attempt_batch(batch, development_point_rows=len(development), schema=schema)
+    validate_tactical_attempt_batch(
+        batch,
+        development_point_rows=len(points),
+        schema=schema,
+        max_effective_date=max_effective_date,
+    )
     return batch
+
+
+def construct_tactical_attempt_records(
+    development: pd.DataFrame,
+    schema: TacticalFeatureSchema,
+    *,
+    orchestrator: Callable[[AttemptSignalRequest], AttemptSignalExtraction] = extract_tactical_signals_for_attempt,
+    encoder: Callable[[AttemptSignalExtraction, TacticalFeatureSchema], TacticalFeatureVector] = encode_tactical_attempt,
+) -> TacticalAttemptBatch:
+    """Construye intentos y reutiliza una cache local completa por contexto.
+
+    Wrapper cerrado de desarrollo: conserva EXACTAMENTE su gate
+    temporal original (``DEVELOPMENT_CUTOFF``) antes de delegar la
+    conversion pura a ``_convert_points_to_attempt_records``. Mismo
+    comportamiento y mismos outputs que antes de la extraccion del
+    helper comun (ver tests de paridad byte/objeto)."""
+    if not isinstance(development, pd.DataFrame) or tuple(development.columns) != SOURCE_COLUMNS:
+        raise TacticalPipelineContractError("Development debe conservar el schema validado.")
+    if bool(development.date.gt(DEVELOPMENT_CUTOFF).any()):
+        raise TacticalPipelineContractError("El test alcanzo el constructor de intentos.")
+    return _convert_points_to_attempt_records(
+        development,
+        schema,
+        max_effective_date=DEVELOPMENT_CUTOFF.date(),
+        orchestrator=orchestrator,
+        encoder=encoder,
+    )
+
+
+def construct_tactical_attempt_records_for_test_partition(
+    test_partition: pd.DataFrame,
+    schema: TacticalFeatureSchema,
+    *,
+    orchestrator: Callable[[AttemptSignalRequest], AttemptSignalExtraction] = extract_tactical_signals_for_attempt,
+    encoder: Callable[[AttemptSignalExtraction, TacticalFeatureSchema], TacticalFeatureVector] = encode_tactical_attempt,
+) -> TacticalAttemptBatch:
+    """Simetrico de ``construct_tactical_attempt_records`` para la
+    particion de TEST (P22): mismo helper comun
+    (``_convert_points_to_attempt_records``, misma semantica, cero
+    duplicacion), gate temporal propio y cerrado
+    ``[TEST_START, EXPECTED_LAST_DATE]`` (``2024-01-01..2026-05-21``).
+
+    No es una API generica: no acepta un rango arbitrario ni un
+    parametro de particion. Cada wrapper (este y
+    ``construct_tactical_attempt_records``) impone su PROPIO limite de
+    fecha de forma cerrada antes de delegar; ninguno de los dos, por
+    separado, permite construir intentos fuera de su propia particion,
+    y no existe una tercera funcion que acepte ambas."""
+    if not isinstance(test_partition, pd.DataFrame) or tuple(test_partition.columns) != SOURCE_COLUMNS:
+        raise TacticalPipelineContractError("La particion de test debe conservar el schema validado.")
+    if bool(test_partition.date.lt(TEST_START).any()) or bool(
+        test_partition.date.gt(EXPECTED_LAST_DATE).any()
+    ):
+        raise TacticalPipelineContractError(
+            "La particion de test excede el rango sellado 2024-01-01..2026-05-21."
+        )
+    return _convert_points_to_attempt_records(
+        test_partition,
+        schema,
+        max_effective_date=EXPECTED_LAST_DATE.date(),
+        orchestrator=orchestrator,
+        encoder=encoder,
+    )
 
 
 def validate_tactical_attempt_record(
     record: TacticalAttemptRecord,
     schema: TacticalFeatureSchema,
+    *,
+    max_effective_date: date = DEVELOPMENT_CUTOFF.date(),
 ) -> None:
+    """``max_effective_date`` conserva su valor por defecto exacto
+    (``DEVELOPMENT_CUTOFF``) para preservar el comportamiento de todos
+    los llamadores existentes sin cambios; solo
+    ``construct_tactical_attempt_records_for_test_partition`` (P22) lo
+    sobreescribe con ``EXPECTED_LAST_DATE``, tras haber comprobado ya
+    su propio rango cerrado de test antes de llegar aqui."""
     if type(record) is not TacticalAttemptRecord:
         raise TypeError("record debe ser TacticalAttemptRecord exacto.")
     _strict_text(record.match_id, "match_id interno", opaque=True)
     _strict_count(record.point_number, "point_number", positive=True)
     if type(record.serve_number) is not int or record.serve_number not in (1, 2):
         raise TacticalPipelineContractError("serve_number invalido.")
-    if type(record.effective_date) is not date or record.effective_date > DEVELOPMENT_CUTOFF.date():
+    if type(record.effective_date) is not date or record.effective_date > max_effective_date:
         raise TacticalPipelineContractError("Fecha interna fuera de desarrollo.")
     if record.surface not in ALLOWED_SURFACES:
         raise TacticalPipelineContractError("Surface interna invalida.")
@@ -2035,12 +2123,15 @@ def validate_tactical_attempt_batch(
     *,
     development_point_rows: int,
     schema: TacticalFeatureSchema,
+    max_effective_date: date = DEVELOPMENT_CUTOFF.date(),
 ) -> None:
     if type(batch) is not TacticalAttemptBatch or type(batch.records) is not tuple:
         raise TypeError("batch/records fuera del contrato inmutable.")
     validate_tactical_feature_schema(schema)
     for record in batch.records:
-        validate_tactical_attempt_record(record, schema)
+        validate_tactical_attempt_record(
+            record, schema, max_effective_date=max_effective_date
+        )
     keys = tuple(
         (item.match_id, item.point_number, item.serve_number) for item in batch.records
     )
@@ -5074,6 +5165,7 @@ __all__ = (
     "build_validation_targets",
     "compute_tactical_pipeline_result",
     "construct_tactical_attempt_records",
+    "construct_tactical_attempt_records_for_test_partition",
     "default_artifact_paths",
     "default_pipeline_config",
     "execute_authorized_real_pipeline",
