@@ -60,6 +60,9 @@ _PLAYER = "PLAYER_SECRET_123"
 _OPPONENT = "OPPONENT_SECRET_456"
 _HEALTH_PATH = "/healthz"
 _POST_PATH = "/api/v1/recommendations"
+_CATALOG_PLAYERS_PATH = "/api/v1/catalog/players"
+_CATALOG_OPPONENTS_PATH = "/api/v1/catalog/players/{player_id}/opponents"
+_CATALOG_DATES_PATH = "/api/v1/catalog/players/{player_id}/opponents/{opponent_id}/dates"
 _REQUEST_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 
@@ -516,11 +519,31 @@ def test_openapi_is_semantically_stable_across_calls():
     second = json.dumps(client.get("/openapi.json").json(), sort_keys=True)
     assert first == second
     spec = client.get("/openapi.json").json()
-    assert set(spec["paths"]) == {_HEALTH_PATH, _POST_PATH}
+    assert set(spec["paths"]) == {
+        _HEALTH_PATH,
+        _POST_PATH,
+        _CATALOG_PLAYERS_PATH,
+        _CATALOG_OPPONENTS_PATH,
+        _CATALOG_DATES_PATH,
+    }
     assert set(spec["paths"][_HEALTH_PATH]) == {"get"}
     assert set(spec["paths"][_POST_PATH]) == {"post"}
+    assert set(spec["paths"][_CATALOG_PLAYERS_PATH]) == {"get"}
+    assert set(spec["paths"][_CATALOG_OPPONENTS_PATH]) == {"get"}
+    assert set(spec["paths"][_CATALOG_DATES_PATH]) == {"get"}
     assert spec["paths"][_POST_PATH]["post"]["operationId"] == "tactical_recommendation_post"
     assert spec["paths"][_HEALTH_PATH]["get"]["operationId"] == "tactical_recommendation_health"
+    assert (
+        spec["paths"][_CATALOG_PLAYERS_PATH]["get"]["operationId"]
+        == "tactical_catalog_players"
+    )
+    assert (
+        spec["paths"][_CATALOG_OPPONENTS_PATH]["get"]["operationId"]
+        == "tactical_catalog_opponents"
+    )
+    assert (
+        spec["paths"][_CATALOG_DATES_PATH]["get"]["operationId"] == "tactical_catalog_dates"
+    )
     spec_text = json.dumps(spec)
     for hidden_pattern in ("P03", "P07", "P08", "P09"):
         assert f'"{hidden_pattern}"' not in spec_text
@@ -794,3 +817,186 @@ def test_generic_fastapi_handler_is_reached_and_redacts_every_privacy_sentinel(
     assert len(_logged_events(caplog)) == 1
     assert generated_ids == ["f" * 32]
     assert response.headers["x-request-id"] == "f" * 32
+
+
+# --------------------------------------------------------------------- #
+# I. P25 -- catalogo de descubrimiento: jugadores, rivales, fechas       #
+# --------------------------------------------------------------------- #
+
+
+_CATALOG_PLAYERS_PATH = "/api/v1/catalog/players"
+
+
+def _catalog_opponents_path(player_id: str) -> str:
+    return f"/api/v1/catalog/players/{player_id}/opponents"
+
+
+def _catalog_dates_path(player_id: str, opponent_id: str) -> str:
+    return f"/api/v1/catalog/players/{player_id}/opponents/{opponent_id}/dates"
+
+
+def _catalog_provider(
+    *, players=(), opponents=(), as_of_dates=(), catalog_raise_error=None
+) -> _RecordingProvider:
+    return _RecordingProvider(
+        _result_for("available"),
+        players=players,
+        opponents=opponents,
+        as_of_dates=as_of_dates,
+        catalog_raise_error=catalog_raise_error,
+    )
+
+
+def test_catalog_players_returns_sorted_players() -> None:
+    provider = _catalog_provider(players=("Bob", "Alice"))
+    client = _client(provider)
+    response = client.get(_CATALOG_PLAYERS_PATH)
+    assert response.status_code == 200
+    assert response.json() == {"players": ["Bob", "Alice"]}
+    assert provider.catalog_calls == 1
+    assert response.headers["x-request-id"]
+
+
+def test_catalog_players_empty_is_200_not_error() -> None:
+    provider = _catalog_provider(players=())
+    response = _client(provider).get(_CATALOG_PLAYERS_PATH)
+    assert response.status_code == 200
+    assert response.json() == {"players": []}
+
+
+def test_catalog_players_500_on_internal_failure() -> None:
+    provider = _catalog_provider(catalog_raise_error=RuntimeError("boom"))
+    response = _client(provider, raise_server_exceptions=False).get(_CATALOG_PLAYERS_PATH)
+    assert response.status_code == 500
+    assert response.json()["error"]["reason_code"] == "internal_error"
+    _sentinel_scan(response.content, "boom", "RuntimeError", "Traceback")
+
+
+def test_catalog_opponents_returns_sorted_opponents_with_counts() -> None:
+    from src.recommender.tactical_recommendation_catalog import TacticalOpponentSummary
+
+    provider = _catalog_provider(
+        opponents=(
+            TacticalOpponentSummary(opponent_id="Zoe", matchup_count=2),
+            TacticalOpponentSummary(opponent_id="Amy", matchup_count=5),
+        )
+    )
+    response = _client(provider).get(_catalog_opponents_path(_PLAYER))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["player_id"] == _PLAYER
+    assert body["opponents"] == [
+        {"opponent_id": "Zoe", "matchup_count": 2},
+        {"opponent_id": "Amy", "matchup_count": 5},
+    ]
+    assert provider.last_catalog_player_id == _PLAYER
+
+
+def test_catalog_opponents_404_when_player_has_no_data() -> None:
+    from src.recommender.tactical_recommendation_service import CatalogNotFoundError
+
+    provider = _catalog_provider(catalog_raise_error=CatalogNotFoundError())
+    response = _client(provider, raise_server_exceptions=False).get(
+        _catalog_opponents_path("Ghost")
+    )
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "reason_code": "catalog_not_found",
+            "stage": "catalog_lookup",
+            "message": (
+                "El catalogo solicitado no tiene datos disponibles para "
+                "ese identificador."
+            ),
+            "retryable": False,
+        }
+    }
+
+
+def test_catalog_opponents_422_on_malformed_player_id() -> None:
+    provider = _catalog_provider()
+    response = _client(provider, raise_server_exceptions=False).get(
+        "/api/v1/catalog/players/../opponents"
+    )
+    assert response.status_code in (404, 422)
+    # Independientemente de si el path atraviesa el router o el
+    # validador, el provider NUNCA debe haberse invocado.
+    assert provider.catalog_calls == 0
+
+
+def test_catalog_dates_returns_iso_dates_from_provider_order() -> None:
+    provider = _catalog_provider(as_of_dates=(date(2031, 6, 30), date(2031, 1, 1)))
+    response = _client(provider).get(_catalog_dates_path(_PLAYER, _OPPONENT))
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "player_id": _PLAYER,
+        "opponent_id": _OPPONENT,
+        "as_of_dates": ["2031-06-30", "2031-01-01"],
+    }
+    assert provider.last_catalog_player_id == _PLAYER
+    assert provider.last_catalog_opponent_id == _OPPONENT
+
+
+def test_catalog_dates_404_when_pair_has_no_data() -> None:
+    from src.recommender.tactical_recommendation_service import CatalogNotFoundError
+
+    provider = _catalog_provider(catalog_raise_error=CatalogNotFoundError())
+    response = _client(provider, raise_server_exceptions=False).get(
+        _catalog_dates_path(_PLAYER, _OPPONENT)
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["reason_code"] == "catalog_not_found"
+
+
+def test_catalog_endpoints_never_expose_target_level_or_point_level_keys() -> None:
+    """Mismo espiritu que el contrato P11: el catalogo solo expone
+    identificadores de jugador/rival y fechas de corte -- nunca
+    identidades de partido/punto ni contenido bruto."""
+    from src.recommender.tactical_recommendation_catalog import TacticalOpponentSummary
+
+    provider = _catalog_provider(
+        players=(_PLAYER,),
+        opponents=(TacticalOpponentSummary(opponent_id=_OPPONENT, matchup_count=1),),
+        as_of_dates=(date(2031, 1, 1),),
+    )
+    client = _client(provider)
+    forbidden = (
+        "match_id", "point", "sequence", "server_won_point", "fingerprint",
+    )
+    for response in (
+        client.get(_CATALOG_PLAYERS_PATH),
+        client.get(_catalog_opponents_path(_PLAYER)),
+        client.get(_catalog_dates_path(_PLAYER, _OPPONENT)),
+    ):
+        assert response.status_code == 200
+        for key in forbidden:
+            assert key not in response.text
+
+
+def test_catalog_endpoints_do_not_affect_recommendation_endpoint() -> None:
+    """No regresion: anadir el catalogo no cambia la semantica del
+    endpoint de recomendaciones existente."""
+    provider = _RecordingProvider(_result_for("available"), players=("irrelevant",))
+    client = _client(provider)
+    response = client.post(_POST_PATH, json=_valid_body())
+    assert response.status_code == 200
+    assert provider.calls == 1
+    assert provider.catalog_calls == 0
+
+
+def test_create_app_rejects_provider_without_catalog_methods() -> None:
+    class _RecommendationOnlyProvider:
+        def fetch_tactical_prioritization(self, query):
+            raise AssertionError("no debe invocarse en esta prueba")
+
+    with pytest.raises(TypeError):
+        create_app(_RecommendationOnlyProvider())
+
+
+def test_catalog_operation_ids_are_fixed() -> None:
+    spec = _client(_catalog_provider()).get("/openapi.json").json()
+    assert (
+        spec["paths"][_CATALOG_PLAYERS_PATH]["get"]["operationId"]
+        == "tactical_catalog_players"
+    )

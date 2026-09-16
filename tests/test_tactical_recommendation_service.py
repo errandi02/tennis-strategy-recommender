@@ -59,6 +59,7 @@ from src.recommender.tactical_signal_orchestrator import (
 )
 from src.recommender.tactical_recommendation_service import (
     MAX_IDENTIFIER_LENGTH,
+    CatalogNotFoundError,
     InternalServiceError,
     InvalidRequestError,
     ProviderTimeoutError,
@@ -337,11 +338,34 @@ def absent_result() -> TacticalPrioritizationResult:
 
 
 class _RecordingProvider:
-    def __init__(self, result=None, *, raise_error: BaseException | None = None):
+    """Doble de test P12 que ademas satisface el catalogo P25
+    (``list_players``/``list_opponents``/``list_as_of_dates``): por
+    defecto devuelve catalogos vacios (nunca invocados por los tests
+    que solo ejercitan recomendaciones), y opcionalmente puede
+    inyectarse contenido sintetico o un error para los tests de
+    catalogo."""
+
+    def __init__(
+        self,
+        result=None,
+        *,
+        raise_error: BaseException | None = None,
+        players: tuple[str, ...] = (),
+        opponents: tuple[object, ...] = (),
+        as_of_dates: tuple[date, ...] = (),
+        catalog_raise_error: BaseException | None = None,
+    ):
         self.result = result
         self.raise_error = raise_error
         self.calls = 0
         self.last_query = None
+        self._players = players
+        self._opponents = opponents
+        self._as_of_dates = as_of_dates
+        self.catalog_raise_error = catalog_raise_error
+        self.catalog_calls = 0
+        self.last_catalog_player_id: str | None = None
+        self.last_catalog_opponent_id: str | None = None
 
     def fetch_tactical_prioritization(self, query: TacticalRecommendationQuery):
         self.calls += 1
@@ -349,6 +373,29 @@ class _RecordingProvider:
         if self.raise_error is not None:
             raise self.raise_error
         return self.result
+
+    def list_players(self) -> tuple[str, ...]:
+        self.catalog_calls += 1
+        if self.catalog_raise_error is not None:
+            raise self.catalog_raise_error
+        return self._players
+
+    def list_opponents(self, player_id: str) -> tuple[object, ...]:
+        self.catalog_calls += 1
+        self.last_catalog_player_id = player_id
+        if self.catalog_raise_error is not None:
+            raise self.catalog_raise_error
+        return self._opponents
+
+    def list_as_of_dates(
+        self, player_id: str, opponent_id: str
+    ) -> tuple[date, ...]:
+        self.catalog_calls += 1
+        self.last_catalog_player_id = player_id
+        self.last_catalog_opponent_id = opponent_id
+        if self.catalog_raise_error is not None:
+            raise self.catalog_raise_error
+        return self._as_of_dates
 
 
 def _sentinel_scan(payload: object, *sentinels: str) -> None:
@@ -918,10 +965,11 @@ def test_service_error_catalog_is_closed_stable_and_pii_free():
             ProviderUnavailableError,
             UpstreamContractViolationError,
             InternalServiceError,
+            CatalogNotFoundError,
         )
     }
     assert set(catalog) == service_module.SERVICE_REASON_CODES
-    assert len(catalog) == 7
+    assert len(catalog) == 8
     expected = {
         "invalid_request": (False, "request_validation"),
         "recommendation_not_found": (False, "provider_lookup"),
@@ -930,6 +978,7 @@ def test_service_error_catalog_is_closed_stable_and_pii_free():
         "provider_unavailable": (True, "provider_lookup"),
         "upstream_contract_violation": (False, "result_validation"),
         "internal_error": (False, "internal"),
+        "catalog_not_found": (False, "catalog_lookup"),
     }
     for reason_code, (retryable, stage) in expected.items():
         cls = catalog[reason_code]
@@ -948,5 +997,6 @@ def test_service_error_catalog_is_closed_stable_and_pii_free():
         ProviderUnavailableError(),
         UpstreamContractViolationError(),
         InternalServiceError(),
+        CatalogNotFoundError(),
     ):
         _sentinel_scan(repr(error), "Alice", "/Users", "C:\\", "2021")

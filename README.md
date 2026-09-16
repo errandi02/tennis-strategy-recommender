@@ -29,8 +29,19 @@ SIGTERM y SIGINT sobre el proceso servidor realizan un apagado ordenado
 y terminan con `0`, sin traceback. El access log HTTP y los loggers
 internos de Uvicorn se mantienen desactivados para no registrar rutas,
 queries, argumentos o tracebacks.
-Endpoints: `GET /healthz` y
-`POST /api/v1/recommendations`.
+Endpoints: `GET /healthz`, `POST /api/v1/recommendations` y el
+catálogo de descubrimiento de solo lectura (P25) —
+`GET /api/v1/catalog/players`,
+`GET /api/v1/catalog/players/{player_id}/opponents` y
+`GET /api/v1/catalog/players/{player_id}/opponents/{opponent_id}/dates`
+— que permiten a la UI construir una consulta válida (jugador → rival
+real → fecha de corte real) sin que el usuario tenga que conocer
+identificadores de memoria. El catálogo se deriva exclusivamente del
+mismo snapshot P13 ya cargado y validado para las recomendaciones
+(fuente única): nunca abre una ruta alternativa, nunca expone
+identidades de partido/punto y responde `404 catalog_not_found` (nunca
+un catálogo inventado) cuando el jugador, rival o pareja no tiene datos
+reales.
 
 En macOS, este launcher `zsh` desacopla el proceso sin colocar un
 `/bin/sh` entre el sistema y Python. `caffeinate` acompaña al PID en un
@@ -62,12 +73,12 @@ shell intermedio:
 kill -TERM "$(cat "$HOME/Documents/p17-runtime.pid")"
 ```
 
-## Interfaz local (P18)
+## Interfaz local (P18, rediseñada en P25)
 
-Interfaz Streamlit local, en español y sin estado, que consume
-exclusivamente la API P17 por HTTP sobre loopback. No importa P10-P16,
-no carga el snapshot, no lee Parquet/CSV ni reports, no conoce la ruta
-del snapshot y no inicia Uvicorn: todo pasa por la API corriendo aparte.
+Interfaz Streamlit local, en español, que consume exclusivamente la
+API P17 por HTTP sobre loopback. No importa P10-P16, no carga el
+snapshot, no lee Parquet/CSV ni reports, no conoce la ruta del
+snapshot y no inicia Uvicorn: todo pasa por la API corriendo aparte.
 Arranque (P17 primero, en su terminal, y luego la UI):
 
 ```bash
@@ -79,23 +90,41 @@ python -m src.api.runtime --host 127.0.0.1 --port 8000
 streamlit run src/ui/streamlit_app.py --browser.gatherUsageStats false
 ```
 
+**Consulta guiada en 3 pasos** (P25): la UI ya no pide escribir
+identificadores de memoria. El jugador se elige con un selector
+buscable (escribir filtra, insensible a mayúsculas/minúsculas y
+acentos) poblado por `GET /api/v1/catalog/players`; el rival, también
+buscable, solo ofrece rivales reales de ese jugador
+(`GET .../opponents`, con el número de fechas válidas como contexto) y
+nunca permite seleccionar al propio jugador; la fecha de corte se
+elige de un desplegable con las fechas realmente disponibles para esa
+pareja (`GET .../dates`, más reciente primero, en formato legible
+español). Cambiar el jugador limpia rival y fecha; cambiar el rival
+limpia la fecha — nunca se conserva una selección de una consulta
+anterior. El botón **«Generar recomendación táctica»** permanece
+deshabilitado hasta que los tres pasos son válidos, y cada pulsación
+realiza UNA única petición `POST` (timeout cliente cerrado de 30 s,
+cero reintentos automáticos); los catálogos usan una caché con TTL
+acotado (`UI_CATALOG_CACHE_TTL_SECONDS`, ver
+`src/ui/streamlit_app.py`) que nunca almacena un fallo.
+
 La URL del servicio se ajusta en el expander de la interfaz (por
 defecto `http://127.0.0.1:8000`): solo se aceptan URLs loopback
 seguras — esquema `http` unico, host `127.0.0.1` exacto, puerto
-`1..65535` estricto, sin credenciales, path, query ni fragmentos.
-Jugador, rival y fecha se validan localmente con el mismo contrato
-cerrado que la API; si jugador y rival son iguales, la UI no envia la
-solicitud. Cada pulsacion del boton realiza UNA unica peticion al
-servicio (timeout cliente cerrado de 30 s, cero reintentos
-automaticos). Los status de error y los fallos de red local (servicio
-no corriendo, timeout, respuesta fuera de contrato) producen mensajes
-cerrados en espanol: sin rutas, sin request IDs, sin tracebacks ni
-datos internos. La ficha se renderiza con sus tarjetas por patron,
-opciones, evidencia (activaciones etiquetadas, exitos/fallos, partidos
-distintos, tasa e intervalo descriptivo), limitaciones y el aviso de
-que se trata de evidencia historica observacional, no de causalidad ni
-de garantia de exito; si el sistema abstiene, la UI lo muestra sin
-inventar recomendaciones.
+`1..65535` estricto, sin credenciales, path, query ni fragmentos. Los
+status de error y los fallos de red local (servicio no corriendo,
+catálogo no disponible, timeout, respuesta fuera de contrato) producen
+mensajes cerrados en español: sin rutas, sin request IDs, sin
+tracebacks ni datos internos. El resultado se presenta en lenguaje
+natural — resumen del enfrentamiento, resumen ejecutivo, una tarjeta
+por patrón táctico (P02/P04/P05/P06) con su estado diferenciado por
+color, texto e icono, y un bloque «¿Por qué aparece esta
+recomendación?» derivado exclusivamente del payload validado — con los
+campos técnicos y fingerprints agrupados en un expander opcional («Ver
+detalles técnicos y trazabilidad»); si el sistema abstiene, la UI lo
+muestra sin inventar recomendaciones, y el aviso de que se trata de
+evidencia histórica observacional (no causalidad ni garantía de éxito)
+permanece siempre visible.
 
 ## Contenedores reproducibles (P19)
 

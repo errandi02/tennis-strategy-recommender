@@ -93,8 +93,17 @@ from src.recommender.tactical_prioritization import (
     tactical_prioritization_result_fingerprint,
     validate_tactical_prioritization_result,
 )
+from src.recommender.tactical_recommendation_catalog import (
+    CatalogInvalidIdentifierError,
+    CatalogTooLargeError,
+    TacticalOpponentSummary,
+    catalog_as_of_dates,
+    catalog_opponents,
+    catalog_players,
+)
 from src.recommender.tactical_recommendation_service import (
     MAX_IDENTIFIER_LENGTH,
+    CatalogNotFoundError,
     InternalServiceError,
     InvalidRequestError,
     ProviderUnavailableError,
@@ -1387,6 +1396,67 @@ class PersistedTacticalRecommendationProvider:
             raise service_error()
         return result
 
+    def _entry_keys(self) -> tuple[tuple[str, str, date], ...]:
+        return tuple(
+            (entry.key.player, entry.key.opponent, entry.key.as_of_date)
+            for entry in self.snapshot.entries
+        )
+
+    def list_players(self) -> tuple[str, ...]:
+        """Catalogo P25: jugadores distintos con al menos una
+        recomendacion real en el snapshot ya cargado y validado."""
+        service_error: type | None = None
+        result: tuple[str, ...] | None = None
+        try:
+            result = catalog_players(self._entry_keys())
+        except CatalogTooLargeError:
+            service_error = UpstreamContractViolationError
+        except Exception:
+            service_error = InternalServiceError
+        if service_error is not None:
+            raise service_error()
+        return result
+
+    def list_opponents(self, player_id: str) -> tuple[TacticalOpponentSummary, ...]:
+        """Catalogo P25: rivales reales de ``player_id`` con el numero
+        de fechas de corte validas por pareja."""
+        service_error: type | None = None
+        result: tuple[TacticalOpponentSummary, ...] | None = None
+        try:
+            result = catalog_opponents(self._entry_keys(), player_id)
+            if not result:
+                service_error = CatalogNotFoundError
+        except CatalogInvalidIdentifierError:
+            service_error = InvalidRequestError
+        except CatalogTooLargeError:
+            service_error = UpstreamContractViolationError
+        except Exception:
+            service_error = InternalServiceError
+        if service_error is not None:
+            raise service_error()
+        return result
+
+    def list_as_of_dates(
+        self, player_id: str, opponent_id: str
+    ) -> tuple[date, ...]:
+        """Catalogo P25: fechas de corte validas para la pareja exacta
+        ``(player_id, opponent_id)``, de mas reciente a mas antigua."""
+        service_error: type | None = None
+        result: tuple[date, ...] | None = None
+        try:
+            result = catalog_as_of_dates(self._entry_keys(), player_id, opponent_id)
+            if not result:
+                service_error = CatalogNotFoundError
+        except CatalogInvalidIdentifierError:
+            service_error = InvalidRequestError
+        except CatalogTooLargeError:
+            service_error = UpstreamContractViolationError
+        except Exception:
+            service_error = InternalServiceError
+        if service_error is not None:
+            raise service_error()
+        return result
+
 
 def create_persisted_tactical_recommendation_provider(
     snapshot_path: object,
@@ -1442,6 +1512,7 @@ __all__ = (
     "SnapshotNotFoundError",
     "SnapshotUnavailableError",
     "SnapshotUpstreamInvalidError",
+    "TacticalOpponentSummary",
     "TacticalRecommendationSnapshotKey",
     "build_persisted_tactical_recommendation_snapshot",
     "create_persisted_tactical_recommendation_provider",

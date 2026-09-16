@@ -925,6 +925,15 @@ class _CountingProvider:
         self._inner = inner
         self.calls = 0
 
+    def list_players(self):
+        return self._inner.list_players()
+
+    def list_opponents(self, player_id):
+        return self._inner.list_opponents(player_id)
+
+    def list_as_of_dates(self, player_id, opponent_id):
+        return self._inner.list_as_of_dates(player_id, opponent_id)
+
     def fetch_tactical_prioritization(self, query):
         self.calls += 1
         return self._inner.fetch_tactical_prioritization(query)
@@ -977,7 +986,13 @@ def test_public_surfaces_do_not_expose_private_sentinels(base_snapshot, tmp_path
     ):
         for sentinel in sentinels + (_PLAYER, _OPPONENT):
             assert sentinel.encode() not in surface
-    assert set(client.app.openapi()["paths"]) == {_HEALTH_PATH, _POST_PATH}
+    assert set(client.app.openapi()["paths"]) == {
+        _HEALTH_PATH,
+        _POST_PATH,
+        "/api/v1/catalog/players",
+        "/api/v1/catalog/players/{player_id}/opponents",
+        "/api/v1/catalog/players/{player_id}/opponents/{opponent_id}/dates",
+    }
 
 
 # --------------------------------------------------------------------------

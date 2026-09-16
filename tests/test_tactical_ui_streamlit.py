@@ -30,6 +30,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -254,7 +255,14 @@ def test_ui_import_subprocess_sin_efectos(tmp_path) -> None:
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == "30.0"
-    assert completed.stderr == ""
+    # Unica excepcion tolerada en stderr: el aviso benigno e inherente
+    # de Streamlit al aplicar ``st.cache_data(...)`` fuera de un
+    # runtime real (una vez por funcion cacheada a nivel de modulo,
+    # ver P25); CUALQUIER otra linea (traceback, red, I/O real) sigue
+    # fallando este test.
+    _benign_cache_warning = "No runtime found, using MemoryCacheStorageManager"
+    for line in completed.stderr.splitlines():
+        assert _benign_cache_warning in line, f"stderr inesperado: {line!r}"
     after = {item.name for item in tmp_path.iterdir()}
     assert after == before
 
@@ -281,12 +289,13 @@ def test_ast_ui_imports_cerrados() -> None:
         "dataclasses.dataclass",
         "datetime",
         "datetime.date",
-        "datetime.datetime",
         "types",
         "types.MappingProxyType",
         "typing",
         "typing.Final",
+        "unicodedata",
         "urllib.parse",
+        "urllib.parse.quote",
         "urllib.parse.urlsplit",
         "httpx",
         "streamlit",
@@ -362,11 +371,20 @@ def test_ast_ui_sin_print_ni_i_o_ni_environ() -> None:
 
 
 def test_ui_fuente_sin_snapshot_ni_estado() -> None:
+    """P25: el asistente de 3 pasos (jugador -> rival -> fecha
+    dependientes, con invalidacion en cascada) es ESTRUCTURALMENTE
+    imposible en el modelo de reruns de Streamlit sin
+    ``st.session_state`` (para recordar la seleccion vigente entre
+    reruns) ni un cache acotado (``st.cache_data``, para no repetir la
+    misma peticion HTTP en cada interaccion). Por eso, a diferencia de
+    P18-P19 originales, este modulo SI usa ambos -- nunca para datos
+    sensibles ni errores (ver ``UI_CATALOG_CACHE_TTL_SECONDS`` y los
+    tests de invalidacion). El resto de las prohibiciones originales
+    (sin snapshot, sin P10-P16, sin uvicorn/pandas/pyarrow/pickle/
+    subprocess) sigue vigente sin excepcion."""
     source = Path(ui.__file__).read_text(encoding="utf-8")
     for banned in (
         "TENNIS_TACTICAL_SNAPSHOT_PATH",
-        "session_state",
-        "st.cache",
         "uvicorn",
         "pandas",
         "pyarrow",
@@ -382,6 +400,18 @@ def test_ui_fuente_sin_snapshot_ni_estado() -> None:
     assert ui.UI_MAX_RESPONSE_BYTES == 1024 * 1024
 
 
+def test_cache_de_catalogo_tiene_ttl_acotado_y_nunca_cachea_errores() -> None:
+    """El cache de catalogos declara un TTL finito y explicito (nunca
+    ``ttl=None``/indefinido); las funciones cacheadas lanzan en
+    cualquier fallo -- Streamlit nunca cachea una llamada que termina
+    en excepcion, luego un error nunca queda "pegado" en cache."""
+    assert isinstance(ui.UI_CATALOG_CACHE_TTL_SECONDS, int)
+    assert 0 < ui.UI_CATALOG_CACHE_TTL_SECONDS <= 300
+    source = Path(ui.__file__).read_text(encoding="utf-8")
+    assert source.count("@st.cache_data(ttl=UI_CATALOG_CACHE_TTL_SECONDS") == 3
+    assert "ttl=None" not in source
+
+
 def test_dependencia_y_comando_desactivan_telemetria() -> None:
     requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert requirements.splitlines().count("streamlit==1.63.0") == 1
@@ -392,50 +422,80 @@ def test_dependencia_y_comando_desactivan_telemetria() -> None:
     ) in readme
 
 
-def test_formulario_limpia_identidades_y_usa_claves_estables(monkeypatch) -> None:
-    class _Context:
-        def __enter__(self):
-            return self
+def test_wizard_state_keys_are_stable_string_constants() -> None:
+    keys = (
+        ui.STATE_PLAYER, ui.STATE_OPPONENT, ui.STATE_DATE,
+        ui.STATE_PLAYER_SEARCH, ui.STATE_OPPONENT_SEARCH,
+        ui.STATE_RESULT, ui.STATE_RESULT_KEY,
+    )
+    assert all(type(key) is str and key for key in keys)
+    assert len(set(keys)) == len(keys)
 
-        def __exit__(self, exc_type, exc_value, traceback) -> bool:
-            return False
 
-    class _StreamlitDouble:
-        def __init__(self) -> None:
-            self.form_call = None
-            self.keys: list[str] = []
+def test_changing_player_clears_opponent_and_date() -> None:
+    state: dict[str, object] = {
+        ui.STATE_PLAYER: "Alice",
+        ui.STATE_OPPONENT: "Bob",
+        ui.STATE_DATE: "2031-06-30",
+        ui.STATE_RESULT: object(),
+    }
+    ui.apply_player_selection_change(state, "Carol")
+    assert state[ui.STATE_PLAYER] == "Carol"
+    assert state[ui.STATE_OPPONENT] is None
+    assert state[ui.STATE_DATE] is None
+    assert state[ui.STATE_RESULT] is None
 
-        def subheader(self, text: str) -> None:
-            return None
 
-        def form(self, name: str, *, clear_on_submit: bool):
-            self.form_call = (name, clear_on_submit)
-            return _Context()
+def test_selecting_same_player_again_does_not_clear_opponent_or_date() -> None:
+    state: dict[str, object] = {
+        ui.STATE_PLAYER: "Alice",
+        ui.STATE_OPPONENT: "Bob",
+        ui.STATE_DATE: "2031-06-30",
+    }
+    ui.apply_player_selection_change(state, "Alice")
+    assert state[ui.STATE_OPPONENT] == "Bob"
+    assert state[ui.STATE_DATE] == "2031-06-30"
 
-        def text_input(self, label: str, **kwargs):
-            self.keys.append(kwargs["key"])
-            return "A" if label == "Jugador" else "B"
 
-        def date_input(self, label: str, **kwargs):
-            self.keys.append(kwargs["key"])
-            return kwargs["value"]
+def test_changing_opponent_clears_date_but_not_player() -> None:
+    state: dict[str, object] = {
+        ui.STATE_PLAYER: "Alice",
+        ui.STATE_OPPONENT: "Bob",
+        ui.STATE_DATE: "2031-06-30",
+        ui.STATE_RESULT: object(),
+    }
+    ui.apply_opponent_selection_change(state, "Dave")
+    assert state[ui.STATE_PLAYER] == "Alice"
+    assert state[ui.STATE_OPPONENT] == "Dave"
+    assert state[ui.STATE_DATE] is None
+    assert state[ui.STATE_RESULT] is None
 
-        def form_submit_button(self, label: str, **kwargs):
-            self.keys.append(kwargs["key"])
-            return False
 
-    double = _StreamlitDouble()
-    monkeypatch.setattr(ui, "st", double)
-    player, opponent, chosen_date, submitted = ui.form_inputs()
-    assert (player, opponent, submitted) == ("A", "B", "")
-    assert type(chosen_date).__name__ == "date"
-    assert double.form_call == ("recommendation_form", True)
-    assert double.keys == [
-        "recommendation_player",
-        "recommendation_opponent",
-        "recommendation_as_of_date",
-        "recommendation_submit",
-    ]
+def test_changing_date_clears_only_the_previous_result() -> None:
+    state: dict[str, object] = {
+        ui.STATE_PLAYER: "Alice",
+        ui.STATE_OPPONENT: "Bob",
+        ui.STATE_DATE: "2031-06-30",
+        ui.STATE_RESULT: object(),
+    }
+    ui.apply_date_selection_change(state, "2031-05-01")
+    assert state[ui.STATE_PLAYER] == "Alice"
+    assert state[ui.STATE_OPPONENT] == "Bob"
+    assert state[ui.STATE_DATE] == "2031-05-01"
+    assert state[ui.STATE_RESULT] is None
+
+
+def test_apply_selection_change_works_on_a_mapping_like_state(monkeypatch) -> None:
+    """La logica de invalidacion no depende de ``st.session_state``
+    real: funciona sobre cualquier objeto tipo mapa mutable, para poder
+    probarla sin un runtime de Streamlit."""
+
+    class _MappingLike(dict):
+        pass
+
+    state = _MappingLike({ui.STATE_PLAYER: "Alice", ui.STATE_OPPONENT: "Bob"})
+    ui.apply_player_selection_change(state, "Zoe")
+    assert state[ui.STATE_OPPONENT] is None
 
 
 # --------------------------------------------------------------------- #
@@ -1276,9 +1336,13 @@ def test_render_parcial_sin_excepciones(streamlit_silenced) -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_form_inputs_es_publico() -> None:
-    assert hasattr(ui, "form_inputs")
-    assert not hasattr(ui, "_form_inputs")
+def test_run_recommendation_experience_es_publico_y_reutilizable() -> None:
+    """P25: sustituye a ``form_inputs`` (formulario unico, sin catalogo)
+    por el asistente de 3 pasos, compartido entre P18 local y P19
+    contenedor."""
+    assert hasattr(ui, "run_recommendation_experience")
+    assert not hasattr(ui, "form_inputs")
+    assert not hasattr(ui, "_run_recommendation_experience")
 
 
 def test_validate_container_api_base_url_acepta_solo_la_constante() -> None:
@@ -1362,3 +1426,212 @@ def test_fetch_recommendation_modo_local_rechaza_url_contenedor() -> None:
     )
     assert outcome.model is None
     assert client.calls == []
+
+
+# --------------------------------------------------------------------- #
+# I. P25 -- catalogo de descubrimiento: fetch, parseo, filtrado          #
+# --------------------------------------------------------------------- #
+
+
+def _json_response(body: object, status: int = 200) -> _FakeResponse:
+    payload = json.dumps(body).encode("utf-8")
+    return _FakeResponse(status, payload, headers={"content-length": str(len(payload))})
+
+
+def test_fetch_players_catalog_parses_and_calls_expected_url() -> None:
+    client = _FakeClient(_json_response({"players": ["Alice", "Bob"]}))
+    players = ui.fetch_players_catalog(client, _BASE_URL)
+    assert players == ("Alice", "Bob")
+    assert client.calls[0][0] == "GET"
+    assert client.calls[0][1] == _BASE_URL + ui.UI_CATALOG_PLAYERS_PATH
+
+
+def test_fetch_players_catalog_raises_on_non_200() -> None:
+    client = _FakeClient(_json_response({}, status=500))
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_players_catalog(client, _BASE_URL)
+
+
+def test_fetch_players_catalog_raises_on_malformed_payload() -> None:
+    client = _FakeClient(_json_response({"players": [1, 2]}))
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_players_catalog(client, _BASE_URL)
+
+
+def test_fetch_players_catalog_raises_on_timeout() -> None:
+    client = _FakeClient(exc=httpx.TimeoutException("slow"))
+    with pytest.raises(ui.CatalogUnavailableError) as exc_info:
+        ui.fetch_players_catalog(client, _BASE_URL)
+    message = str(exc_info.value)
+    for forbidden in ("slow", "Traceback", _BASE_URL):
+        assert forbidden not in message
+
+
+def test_fetch_players_catalog_enforces_max_response_bytes() -> None:
+    huge = json.dumps({"players": ["A" * 10]}).encode("utf-8")
+    response = _FakeResponse(
+        200, huge, headers={"content-length": str(ui.UI_MAX_RESPONSE_BYTES + 1)}
+    )
+    client = _FakeClient(response)
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_players_catalog(client, _BASE_URL)
+    assert not response.iterated
+
+
+def test_fetch_opponents_catalog_parses_player_and_opponents() -> None:
+    body = {
+        "player_id": _PLAYER,
+        "opponents": [
+            {"opponent_id": "Zoe", "matchup_count": 3},
+            {"opponent_id": "Amy", "matchup_count": 1},
+        ],
+    }
+    client = _FakeClient(_json_response(body))
+    opponents = ui.fetch_opponents_catalog(client, _BASE_URL, _PLAYER)
+    assert opponents == (
+        ui.CatalogOpponent(opponent_id="Zoe", matchup_count=3),
+        ui.CatalogOpponent(opponent_id="Amy", matchup_count=1),
+    )
+    assert quote(_PLAYER, safe="") in client.calls[0][1]
+
+
+def test_fetch_opponents_catalog_url_encodes_player_with_spaces() -> None:
+    player_with_space = "Rafael Nadal"
+    client = _FakeClient(_json_response({"player_id": player_with_space, "opponents": []}))
+    ui.fetch_opponents_catalog(client, _BASE_URL, player_with_space)
+    assert " " not in client.calls[0][1]
+    assert "Rafael%20Nadal" in client.calls[0][1] or "Rafael+Nadal" in client.calls[0][1]
+
+
+def test_fetch_opponents_catalog_rejects_malformed_player_id_before_request() -> None:
+    client = _FakeClient()
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_opponents_catalog(client, _BASE_URL, "../etc/passwd")
+    assert client.calls == []
+
+
+def test_fetch_opponents_catalog_raises_on_404() -> None:
+    client = _FakeClient(_json_response({}, status=404))
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_opponents_catalog(client, _BASE_URL, _PLAYER)
+
+
+def test_fetch_dates_catalog_parses_iso_dates_in_given_order() -> None:
+    body = {
+        "player_id": _PLAYER,
+        "opponent_id": _OPPONENT,
+        "as_of_dates": ["2031-06-30", "2031-01-01"],
+    }
+    client = _FakeClient(_json_response(body))
+    dates = ui.fetch_dates_catalog(client, _BASE_URL, _PLAYER, _OPPONENT)
+    assert dates == ("2031-06-30", "2031-01-01")
+
+
+def test_fetch_dates_catalog_rejects_non_iso_dates() -> None:
+    body = {
+        "player_id": _PLAYER, "opponent_id": _OPPONENT,
+        "as_of_dates": ["30/06/2031"],
+    }
+    client = _FakeClient(_json_response(body))
+    with pytest.raises(ui.CatalogUnavailableError):
+        ui.fetch_dates_catalog(client, _BASE_URL, _PLAYER, _OPPONENT)
+
+
+def test_catalog_fetchers_never_leak_sensitive_content_in_exception_message() -> None:
+    client = _FakeClient(_json_response({}, status=500))
+    for fetcher in (
+        lambda: ui.fetch_players_catalog(client, _BASE_URL),
+        lambda: ui.fetch_opponents_catalog(client, _BASE_URL, _PLAYER),
+        lambda: ui.fetch_dates_catalog(client, _BASE_URL, _PLAYER, _OPPONENT),
+    ):
+        with pytest.raises(ui.CatalogUnavailableError) as exc_info:
+            fetcher()
+        message = str(exc_info.value)
+        for sensitive in _SENSITIVE:
+            assert sensitive not in message
+
+
+# --------------------------------------------------------------------- #
+# J. P25 -- filtrado de busqueda insensible a mayusculas y acentos       #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("", ("Félix", "alice", "BOB")),
+        ("fel", ("Félix",)),
+        ("FÉL", ("Félix",)),
+        ("felix", ("Félix",)),
+        ("ALICE", ("alice",)),
+        ("bo", ("BOB",)),
+        ("zzz", ()),
+    ],
+)
+def test_filter_catalog_by_search_case_and_accent_insensitive(
+    query: str, expected: tuple[str, ...]
+) -> None:
+    options = ("Félix", "alice", "BOB")
+    assert ui.filter_catalog_by_search(options, query) == expected
+
+
+def test_filter_catalog_by_search_preserves_input_order() -> None:
+    options = ("Zoe", "Amy", "Bob")
+    assert ui.filter_catalog_by_search(options, "") == options
+    assert ui.filter_catalog_by_search(options, "o") == ("Zoe", "Bob")
+
+
+def test_filter_catalog_by_search_never_mutates_canonical_identifier() -> None:
+    """El filtrado es SOLO para decidir que mostrar; el valor devuelto
+    sigue siendo el identificador canonico original, nunca una version
+    normalizada."""
+    options = ("Félix Auger-Aliassime",)
+    result = ui.filter_catalog_by_search(options, "felix")
+    assert result == ("Félix Auger-Aliassime",)
+
+
+# --------------------------------------------------------------------- #
+# K. P25 -- invalidacion en cascada al enviar la consulta final          #
+# --------------------------------------------------------------------- #
+
+
+def test_run_recommendation_experience_calls_fetch_recommendation_at_most_once() -> None:
+    """Garantia estructural (AST, no de comportamiento simulado): el
+    cuerpo de ``run_recommendation_experience`` invoca
+    ``fetch_recommendation`` (la UNICA peticion POST) como maximo una
+    vez -- nunca dentro de un bucle, nunca mas de una llamada textual."""
+    tree = ast.parse(Path(ui.__file__).read_text(encoding="utf-8"))
+    target = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "run_recommendation_experience"
+    )
+    for node in ast.walk(target):
+        assert not isinstance(node, (ast.For, ast.While)), (
+            "run_recommendation_experience no debe contener bucles "
+            "(evita reintentos automaticos de POST)."
+        )
+    call_count = sum(
+        1 for node in ast.walk(target)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "fetch_recommendation"
+    )
+    assert call_count == 1
+
+
+def test_run_recommendation_experience_calls_catalog_fetchers_at_most_once_each() -> None:
+    tree = ast.parse(Path(ui.__file__).read_text(encoding="utf-8"))
+    target = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "run_recommendation_experience"
+    )
+    for cached_name in (
+        "_cached_players_catalog", "_cached_opponents_catalog", "_cached_dates_catalog",
+    ):
+        call_count = sum(
+            1 for node in ast.walk(target)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == cached_name
+        )
+        assert call_count == 1, f"{cached_name} debe invocarse exactamente una vez."

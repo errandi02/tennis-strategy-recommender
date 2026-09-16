@@ -11,7 +11,7 @@ interno de Docker Compose) es una constante fija de
 ``src.ui.streamlit_app`` que nunca proviene del entorno ni de ninguna
 entrada del usuario. Sin la variable, o con cualquier valor distinto de
 ``container`` (vacio, manipulado o desconocido), la interfaz falla
-cerrada: no renderiza el formulario ni permite ninguna peticion, y no
+cerrada: no renderiza el asistente ni permite ninguna peticion, y no
 revela la variable, su valor ni la URL interna en la UI, logs o
 errores.
 
@@ -19,28 +19,23 @@ Solo este modulo lee variables de entorno; ``streamlit_app.py`` (P18)
 permanece sin acceso a ``os.environ`` y sin cambios de comportamiento
 local. Import sin efectos: no arranca Streamlit, no hace red y no lee
 la variable de entorno hasta que ``main()`` se ejecuta explicitamente.
-"""
+
+P25: el asistente de 3 pasos (jugador -> rival -> fecha) y el render
+del resultado son EXACTAMENTE los mismos que en modo local
+(``run_recommendation_experience``); solo cambia como se resuelve la
+URL base (constante fija de contenedor, nunca editable)."""
 
 from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime
 from typing import Final
-
-import httpx
 
 import streamlit as st
 
 from src.ui.streamlit_app import (
     UI_CONTAINER_API_BASE_URL,
-    UI_REQUEST_TIMEOUT_SECONDS,
-    fetch_recommendation,
-    form_inputs,
-    outcome_kind_label,
-    render_public_recommendation,
-    validate_local_date,
-    validate_local_identifier,
+    run_recommendation_experience,
 )
 
 
@@ -66,69 +61,13 @@ def main() -> None:
     logging.getLogger("httpcore").disabled = True
     st.set_page_config(
         page_title="Recomendador táctico (contenedor)",
-        layout="wide",
+        layout="centered",
         initial_sidebar_state="collapsed",
     )
     if not is_container_mode_active():
         st.error(_CONTAINER_MESSAGES["config_rejected"])
         return
-    st.title("Recomendador táctico de tenis (evidencia histórica)")
-    st.caption(
-        "Interfaz en contenedor sobre la API P17 interna. Las fichas son "
-        "evidencia histórica observacional: no afirman causalidad ni "
-        "garantizan éxito. El servicio se resuelve automáticamente; no "
-        "es configurable desde la interfaz."
-    )
-    player_raw, opponent_raw, chosen_date, submitted = form_inputs()
-    if not submitted:
-        st.caption(
-            "Introduce jugador, rival y fecha y pulsa "
-            "«Solicitar recomendación»."
-        )
-        return
-    try:
-        player = validate_local_identifier(player_raw, "player")
-        opponent = validate_local_identifier(opponent_raw, "opponent")
-    except ValueError as error:
-        st.error(str(error))
-        return
-    if player == opponent:
-        st.error("Jugador y rival deben ser diferentes.")
-        return
-    if isinstance(chosen_date, datetime):
-        as_of_raw = chosen_date.date().isoformat()
-    elif isinstance(chosen_date, date):
-        as_of_raw = chosen_date.isoformat()
-    else:
-        as_of_raw = ""
-    try:
-        as_of = validate_local_date(as_of_raw)
-    except ValueError as error:
-        st.error(str(error))
-        return
-    client = httpx.Client(
-        timeout=UI_REQUEST_TIMEOUT_SECONDS,
-        follow_redirects=False,
-        trust_env=False,
-        limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
-    )
-    try:
-        with st.spinner("Consultando el servicio…"):
-            outcome = fetch_recommendation(
-                client,
-                UI_CONTAINER_API_BASE_URL,
-                player,
-                opponent,
-                as_of,
-                container_mode=True,
-            )
-    finally:
-        client.close()
-    if outcome.model is not None:
-        render_public_recommendation(outcome.model)
-        return
-    label = outcome_kind_label(outcome)
-    st.error(f"{outcome.message} {label}".strip())
+    run_recommendation_experience(UI_CONTAINER_API_BASE_URL, container_mode=True)
 
 
 if __name__ == "__main__":

@@ -93,7 +93,12 @@ def test_import_subprocess_sin_efectos(tmp_path) -> None:
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == "container"
-    assert completed.stderr == ""
+    # Unica excepcion tolerada: el aviso benigno e inherente de
+    # Streamlit al aplicar ``st.cache_data(...)`` fuera de un runtime
+    # real (heredado de ``streamlit_app`` via import, ver P25).
+    _benign_cache_warning = "No runtime found, using MemoryCacheStorageManager"
+    for line in completed.stderr.splitlines():
+        assert _benign_cache_warning in line, f"stderr inesperado: {line!r}"
     after = {item.name for item in tmp_path.iterdir()}
     assert after == before
 
@@ -115,22 +120,12 @@ def test_ast_imports_cerrados() -> None:
         "__future__.annotations",
         "logging",
         "os",
-        "datetime",
-        "datetime.date",
-        "datetime.datetime",
         "typing",
         "typing.Final",
-        "httpx",
         "streamlit",
         "src.ui.streamlit_app",
         "src.ui.streamlit_app.UI_CONTAINER_API_BASE_URL",
-        "src.ui.streamlit_app.UI_REQUEST_TIMEOUT_SECONDS",
-        "src.ui.streamlit_app.fetch_recommendation",
-        "src.ui.streamlit_app.form_inputs",
-        "src.ui.streamlit_app.outcome_kind_label",
-        "src.ui.streamlit_app.render_public_recommendation",
-        "src.ui.streamlit_app.validate_local_date",
-        "src.ui.streamlit_app.validate_local_identifier",
+        "src.ui.streamlit_app.run_recommendation_experience",
     }
     assert imported <= allowed
     banned = {"pandas", "pyarrow", "pickle", "subprocess", "uvicorn"}
@@ -210,12 +205,14 @@ def test_solo_este_modulo_lee_environ() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_modo_ausente_falla_cerrado_sin_formulario(
+def test_modo_ausente_falla_cerrado_sin_asistente(
     monkeypatch, st_double
 ) -> None:
     monkeypatch.delenv(cui.CONTAINER_RUNTIME_MODE_ENV, raising=False)
     called = []
-    monkeypatch.setattr(cui, "form_inputs", lambda: called.append(True))
+    monkeypatch.setattr(
+        cui, "run_recommendation_experience", lambda *a, **k: called.append((a, k))
+    )
     cui.main()
     assert st_double.errors == [cui._CONTAINER_MESSAGES["config_rejected"]]
     assert called == []
@@ -226,12 +223,14 @@ def test_modo_ausente_falla_cerrado_sin_formulario(
     "bad_value",
     ["", "true", "1", "CONTAINER", " container", "container ", "local"],
 )
-def test_modo_manipulado_falla_cerrado_sin_formulario(
+def test_modo_manipulado_falla_cerrado_sin_asistente(
     bad_value, monkeypatch, st_double
 ) -> None:
     monkeypatch.setenv(cui.CONTAINER_RUNTIME_MODE_ENV, bad_value)
     called = []
-    monkeypatch.setattr(cui, "form_inputs", lambda: called.append(True))
+    monkeypatch.setattr(
+        cui, "run_recommendation_experience", lambda *a, **k: called.append((a, k))
+    )
     cui.main()
     assert st_double.errors == [cui._CONTAINER_MESSAGES["config_rejected"]]
     assert called == []
@@ -241,6 +240,9 @@ def test_mensaje_de_error_no_revela_variable_ni_valor_ni_url(
     monkeypatch, st_double
 ) -> None:
     monkeypatch.setenv(cui.CONTAINER_RUNTIME_MODE_ENV, "secreto-manipulado")
+    monkeypatch.setattr(
+        cui, "run_recommendation_experience", lambda *a, **k: None
+    )
     cui.main()
     blob = " ".join(st_double.errors + st_double.captions + st_double.titles)
     assert cui.CONTAINER_RUNTIME_MODE_ENV not in blob
@@ -248,123 +250,48 @@ def test_mensaje_de_error_no_revela_variable_ni_valor_ni_url(
     assert "api:8000" not in blob
 
 
-def test_mensaje_local_activo_no_revela_url_interna(monkeypatch, st_double) -> None:
-    monkeypatch.setenv(
-        cui.CONTAINER_RUNTIME_MODE_ENV, cui.CONTAINER_RUNTIME_MODE_VALUE
-    )
-    monkeypatch.setattr(cui, "form_inputs", lambda: ("", "", None, ""))
-    cui.main()
-    blob = " ".join(st_double.errors + st_double.captions + st_double.titles)
-    assert "api:8000" not in blob
-    assert cui.CONTAINER_RUNTIME_MODE_ENV not in blob
-
-
 # --------------------------------------------------------------------- #
-# C. Modo activo: URL fija, nunca configurable por el usuario            #
+# C. Modo activo: delega en el asistente compartido con la URL fija      #
+# --------------------------------------------------------------------- #
+#                                                                         #
+# El asistente de 3 pasos (P25, ``run_recommendation_experience``) es    #
+# COMPARTIDO entre P18 local y P19 contenedor: su comportamiento         #
+# interno (catalogos, invalidacion en cascada, render) ya se prueba a    #
+# fondo en test_tactical_ui_streamlit.py con la URL local. Aqui solo se  #
+# prueba el CONTRATO DE DELEGACION propio de P19: que se invoca con la   #
+# URL interna fija y ``container_mode=True``, y NUNCA con otra URL.      #
 # --------------------------------------------------------------------- #
 
 
-def test_modo_activo_sin_submit_no_llama_fetch(monkeypatch, st_double) -> None:
+def test_modo_activo_delega_con_url_fija_y_container_mode(
+    monkeypatch, st_double
+) -> None:
     monkeypatch.setenv(
         cui.CONTAINER_RUNTIME_MODE_ENV, cui.CONTAINER_RUNTIME_MODE_VALUE
     )
-    monkeypatch.setattr(cui, "form_inputs", lambda: ("", "", None, ""))
-    fetch_calls = []
-    monkeypatch.setattr(
-        cui, "fetch_recommendation", lambda *a, **k: fetch_calls.append((a, k))
-    )
+    captured = {}
+
+    def _fake_experience(base_url: str, *, container_mode: bool) -> None:
+        captured["base_url"] = base_url
+        captured["container_mode"] = container_mode
+
+    monkeypatch.setattr(cui, "run_recommendation_experience", _fake_experience)
     cui.main()
-    assert fetch_calls == []
+    assert captured["base_url"] == cui.UI_CONTAINER_API_BASE_URL
+    assert captured["base_url"] == "http://api:8000"
+    assert captured["container_mode"] is True
     assert st_double.errors == []
 
 
-def test_modo_activo_submit_usa_url_fija_del_contenedor(
-    monkeypatch, st_double
-) -> None:
-    from datetime import date
-
+def test_modo_activo_nunca_invoca_url_alternativa(monkeypatch, st_double) -> None:
     monkeypatch.setenv(
         cui.CONTAINER_RUNTIME_MODE_ENV, cui.CONTAINER_RUNTIME_MODE_VALUE
     )
+    urls_seen = []
     monkeypatch.setattr(
         cui,
-        "form_inputs",
-        lambda: ("JugadorX", "RivalY", date(2031, 6, 30), "sent"),
-    )
-
-    captured = {}
-
-    class _FakeOutcome:
-        model = None
-        message = "cerrado"
-
-    def _fake_fetch(client, base_url, player, opponent, as_of, *, container_mode):
-        captured["base_url"] = base_url
-        captured["player"] = player
-        captured["opponent"] = opponent
-        captured["as_of"] = as_of
-        captured["container_mode"] = container_mode
-        return _FakeOutcome()
-
-    monkeypatch.setattr(cui, "fetch_recommendation", _fake_fetch)
-    monkeypatch.setattr(cui, "outcome_kind_label", lambda _outcome: "(fallo)")
-
-    class _FakeClient:
-        def __init__(self, **_kwargs) -> None:
-            pass
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr(cui.httpx, "Client", _FakeClient)
-
-    cui.main()
-
-    assert captured["base_url"] == cui.UI_CONTAINER_API_BASE_URL
-    assert captured["base_url"] == "http://api:8000"
-    assert captured["player"] == "JugadorX"
-    assert captured["opponent"] == "RivalY"
-    assert captured["as_of"] == "2031-06-30"
-    assert captured["container_mode"] is True
-
-
-def test_modo_activo_jugador_igual_rival_se_rechaza(monkeypatch, st_double) -> None:
-    from datetime import date
-
-    monkeypatch.setenv(
-        cui.CONTAINER_RUNTIME_MODE_ENV, cui.CONTAINER_RUNTIME_MODE_VALUE
-    )
-    monkeypatch.setattr(
-        cui,
-        "form_inputs",
-        lambda: ("Igual", "Igual", date(2031, 6, 30), "sent"),
-    )
-    fetch_calls = []
-    monkeypatch.setattr(
-        cui, "fetch_recommendation", lambda *a, **k: fetch_calls.append((a, k))
+        "run_recommendation_experience",
+        lambda base_url, **k: urls_seen.append(base_url),
     )
     cui.main()
-    assert fetch_calls == []
-    assert "Jugador y rival deben ser diferentes." in st_double.errors
-
-
-def test_modo_activo_identificador_invalido_se_rechaza(
-    monkeypatch, st_double
-) -> None:
-    from datetime import date
-
-    monkeypatch.setenv(
-        cui.CONTAINER_RUNTIME_MODE_ENV, cui.CONTAINER_RUNTIME_MODE_VALUE
-    )
-    monkeypatch.setattr(
-        cui,
-        "form_inputs",
-        lambda: ("../etc/passwd", "RivalY", date(2031, 6, 30), "sent"),
-    )
-    fetch_calls = []
-    monkeypatch.setattr(
-        cui, "fetch_recommendation", lambda *a, **k: fetch_calls.append((a, k))
-    )
-    cui.main()
-    assert fetch_calls == []
-    assert len(st_double.errors) == 1
+    assert urls_seen == ["http://api:8000"]

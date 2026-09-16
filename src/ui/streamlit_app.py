@@ -40,11 +40,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from types import MappingProxyType
 from typing import Final
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -61,7 +62,21 @@ UI_MAX_PORT: Final = 65535
 UI_REQUEST_TIMEOUT_SECONDS: Final = 30.0
 UI_MAX_RESPONSE_BYTES: Final = 1024 * 1024
 UI_RECOMMENDATIONS_PATH: Final = "/api/v1/recommendations"
+UI_CATALOG_PLAYERS_PATH: Final = "/api/v1/catalog/players"
+UI_CATALOG_OPPONENTS_PATH_TEMPLATE: Final = "/api/v1/catalog/players/{player}/opponents"
+UI_CATALOG_DATES_PATH_TEMPLATE: Final = (
+    "/api/v1/catalog/players/{player}/opponents/{opponent}/dates"
+)
 UI_MAX_IDENTIFIER_LENGTH: Final = 64
+# TTL deliberadamente corto: el catalogo se deriva del mismo snapshot
+# inmutable que ya sirve cada recomendacion, asi que no puede quedar
+# "desactualizado" durante la vida del proceso; el TTL existe solo
+# para evitar peticiones HTTP redundantes en reruns consecutivos de
+# Streamlit (p.ej. cada pulsacion de tecla en el buscador), no para
+# limitar la frescura de un dato que cambia. No se cachean errores:
+# las funciones cacheadas lanzan una excepcion en cualquier fallo, y
+# Streamlit nunca cachea una llamada que termina en excepcion.
+UI_CATALOG_CACHE_TTL_SECONDS: Final = 60
 UI_IDENTIFIER_CONTROL: Final = frozenset(
     tuple(range(0x00, 0x20)) + (0x7F,) + tuple(range(0x80, 0xA0))
 )
@@ -121,6 +136,20 @@ _UI_LOCAL_MESSAGES: Final = {
         "No se pudo completar la solicitud (fallo local sanitizado)."
     ),
 }
+
+_UI_CATALOG_STATUS_MESSAGES: Final = {
+    404: "No hay datos de catálogo para esa selección.",
+    422: "Identificador fuera del contrato al consultar el catálogo.",
+    500: "Fallo interno del servicio local al consultar el catálogo.",
+    502: "El catálogo del servicio local devolvió datos fuera de contrato.",
+}
+
+
+class CatalogUnavailableError(RuntimeError):
+    """Catálogo de descubrimiento (P25) no disponible: mensaje cerrado,
+    ya listo para mostrarse, sin rutas, IDs ni contenido bruto."""
+
+    __slots__ = ()
 
 
 class PublicContractError(ValueError):
@@ -219,6 +248,30 @@ def validate_local_date(raw: object) -> str:
     return raw  # type: ignore[return-value]
 
 
+def _normalize_search_text(value: str) -> str:
+    """Minusculas y sin marcas diacriticas (acentos), para busqueda
+    insensible a mayusculas/minusculas y, razonablemente, a acentos.
+    Solo se usa para FILTRAR opciones ya obtenidas del catalogo; nunca
+    se envia a la API ni sustituye al identificador canonico."""
+    folded = value.casefold()
+    decomposed = unicodedata.normalize("NFKD", folded)
+    return "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+
+
+def filter_catalog_by_search(options: tuple[str, ...], query: str) -> tuple[str, ...]:
+    """Filtra ``options`` por subcadena, insensible a mayusculas/
+    minusculas y acentos. Cadena vacia devuelve todas las opciones sin
+    modificar el orden de entrada (ya determinista)."""
+    if not query.strip():
+        return options
+    needle = _normalize_search_text(query)
+    return tuple(
+        option for option in options if needle in _normalize_search_text(option)
+    )
+
+
 @dataclass(frozen=True)
 class PublicEvidenceComponent:
     perspective: str
@@ -273,6 +326,15 @@ class PublicRecommendation:
     status_reason_codes: tuple[str, ...]
     cards: tuple[PublicPatternCard, ...]
     limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CatalogOpponent:
+    """Rival real de un jugador, con el numero de fechas de corte
+    validas para esa pareja (catalogo P25)."""
+
+    opponent_id: str
+    matchup_count: int
 
 
 _RESPONSE_KEYS: Final = frozenset(
@@ -934,6 +996,176 @@ def fetch_recommendation(
     )
 
 
+def _resolve_base_url(base_url: str, *, container_mode: bool) -> str:
+    return (
+        validate_container_api_base_url(base_url)
+        if container_mode
+        else validate_api_base_url(base_url)
+    )
+
+
+def _stream_get_json(client: object, url: str) -> object:
+    """GET con limite estricto de bytes, timeout y cero reintentos
+    (misma disciplina que ``fetch_recommendation``); lanza
+    ``CatalogUnavailableError`` con un mensaje cerrado ante CUALQUIER
+    fallo -- nunca devuelve un valor parcial ni deja que Streamlit
+    cachee un resultado fallido."""
+    try:
+        with client.stream(
+            "GET", url, timeout=UI_REQUEST_TIMEOUT_SECONDS, follow_redirects=False
+        ) as response:
+            status_code = response.status_code
+            if type(status_code) is not int or isinstance(status_code, bool):
+                raise CatalogUnavailableError(
+                    _UI_LOCAL_MESSAGES["incompatible_response"]
+                )
+            if status_code != 200:
+                raise CatalogUnavailableError(
+                    _UI_CATALOG_STATUS_MESSAGES.get(
+                        status_code, _UI_LOCAL_MESSAGES["unexpected"]
+                    )
+                )
+            content_length = response.headers.get("content-length")
+            if content_length is not None:
+                if not content_length.isascii() or not content_length.isdecimal():
+                    raise CatalogUnavailableError(
+                        _UI_LOCAL_MESSAGES["incompatible_response"]
+                    )
+                if int(content_length) > UI_MAX_RESPONSE_BYTES:
+                    raise CatalogUnavailableError(
+                        _UI_LOCAL_MESSAGES["incompatible_response"]
+                    )
+            chunks: list[bytes] = []
+            received = 0
+            for chunk in response.iter_bytes():
+                if type(chunk) is not bytes:
+                    raise CatalogUnavailableError(
+                        _UI_LOCAL_MESSAGES["incompatible_response"]
+                    )
+                received += len(chunk)
+                if received > UI_MAX_RESPONSE_BYTES:
+                    raise CatalogUnavailableError(
+                        _UI_LOCAL_MESSAGES["incompatible_response"]
+                    )
+                chunks.append(chunk)
+            content = b"".join(chunks)
+    except CatalogUnavailableError:
+        raise
+    except httpx.TimeoutException:
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["timeout"]) from None
+    except httpx.HTTPError:
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["connection"]) from None
+    except Exception:
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["unexpected"]) from None
+    try:
+        return json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys)
+    except (ValueError, TypeError, UnicodeDecodeError, AttributeError):
+        raise CatalogUnavailableError(
+            _UI_LOCAL_MESSAGES["incompatible_response"]
+        ) from None
+
+
+def fetch_players_catalog(
+    client: object, base_url: str, *, container_mode: bool = False
+) -> tuple[str, ...]:
+    """Jugadores con recomendacion real disponible (catalogo P25).
+
+    Lanza ``CatalogUnavailableError`` (mensaje cerrado) ante cualquier
+    fallo; nunca devuelve un catalogo parcial ni inventa jugadores."""
+    try:
+        validated_base_url = _resolve_base_url(base_url, container_mode=container_mode)
+    except ValueError:
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"]) from None
+    payload = _stream_get_json(
+        client, f"{validated_base_url}{UI_CATALOG_PLAYERS_PATH}"
+    )
+    if (
+        type(payload) is not dict
+        or set(payload.keys()) != {"players"}
+        or type(payload["players"]) is not list
+        or any(type(item) is not str or not item for item in payload["players"])
+    ):
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"])
+    return tuple(payload["players"])
+
+
+def fetch_opponents_catalog(
+    client: object, base_url: str, player_id: str, *, container_mode: bool = False
+) -> tuple[CatalogOpponent, ...]:
+    """Rivales reales de ``player_id`` (catalogo P25).
+
+    Lanza ``CatalogUnavailableError`` (mensaje cerrado) ante cualquier
+    fallo, incluido un ``player_id`` sin datos de catalogo."""
+    try:
+        validated_base_url = _resolve_base_url(base_url, container_mode=container_mode)
+        validated_player = validate_local_identifier(player_id, "player")
+    except (ValueError, _IdentifierContractError):
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"]) from None
+    path = UI_CATALOG_OPPONENTS_PATH_TEMPLATE.format(
+        player=quote(validated_player, safe="")
+    )
+    payload = _stream_get_json(client, f"{validated_base_url}{path}")
+    if (
+        type(payload) is not dict
+        or set(payload.keys()) != {"player_id", "opponents"}
+        or type(payload["player_id"]) is not str
+        or type(payload["opponents"]) is not list
+    ):
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"])
+    opponents: list[CatalogOpponent] = []
+    for item in payload["opponents"]:
+        if (
+            type(item) is not dict
+            or set(item.keys()) != {"opponent_id", "matchup_count"}
+            or type(item["opponent_id"]) is not str
+            or not item["opponent_id"]
+            or type(item["matchup_count"]) is not int
+            or isinstance(item["matchup_count"], bool)
+            or item["matchup_count"] < 1
+        ):
+            raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"])
+        opponents.append(
+            CatalogOpponent(
+                opponent_id=item["opponent_id"], matchup_count=item["matchup_count"]
+            )
+        )
+    return tuple(opponents)
+
+
+def fetch_dates_catalog(
+    client: object,
+    base_url: str,
+    player_id: str,
+    opponent_id: str,
+    *,
+    container_mode: bool = False,
+) -> tuple[str, ...]:
+    """Fechas de corte validas para la pareja exacta (catalogo P25),
+    de mas reciente a mas antigua (orden ya garantizado por la API).
+
+    Lanza ``CatalogUnavailableError`` (mensaje cerrado) ante cualquier
+    fallo, incluida una pareja sin fechas validas."""
+    try:
+        validated_base_url = _resolve_base_url(base_url, container_mode=container_mode)
+        validated_player = validate_local_identifier(player_id, "player")
+        validated_opponent = validate_local_identifier(opponent_id, "opponent")
+    except (ValueError, _IdentifierContractError):
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"]) from None
+    path = UI_CATALOG_DATES_PATH_TEMPLATE.format(
+        player=quote(validated_player, safe=""),
+        opponent=quote(validated_opponent, safe=""),
+    )
+    payload = _stream_get_json(client, f"{validated_base_url}{path}")
+    if (
+        type(payload) is not dict
+        or set(payload.keys()) != {"player_id", "opponent_id", "as_of_dates"}
+        or type(payload["as_of_dates"]) is not list
+        or any(not _is_civil_iso_date(item) for item in payload["as_of_dates"])
+    ):
+        raise CatalogUnavailableError(_UI_LOCAL_MESSAGES["incompatible_response"])
+    return tuple(payload["as_of_dates"])
+
+
 def outcome_kind_label(outcome: UIOutcome) -> str:
     """Etiqueta cerrada en español del resultado de la peticion."""
     if outcome.kind == _UI_LOCAL_OUTCOMES["ok"]:
@@ -950,9 +1182,15 @@ _OPPORTUNITY_LABELS: Final = {
     "initial_return_shot_type": "Tipo de golpe del primer resto",
 }
 _ACTOR_LABELS: Final = {"server": "Sacador", "returner": "Resto"}
+_PATTERN_SHORT_LABELS: Final = {
+    "P02": "P02 · Saque",
+    "P04": "P04 · Dirección del resto",
+    "P05": "P05 · Profundidad del resto",
+    "P06": "P06 · Tipo de resto",
+}
 _CARD_STATUS_LABELS: Final = {
-    "available": "Disponible",
-    "partially_available": "Parcialmente disponible",
+    "available": "Recomendación disponible",
+    "partially_available": "Evidencia parcial",
     "not_available": "No disponible",
 }
 _OPTION_STATUS_LABELS: Final = {
@@ -962,9 +1200,17 @@ _OPTION_STATUS_LABELS: Final = {
     "not_available": "No disponible",
 }
 _RESPONSE_STATUS_LABELS: Final = {
-    "available": "Disponible",
-    "partially_available": "Parcialmente disponible",
+    "available": "Recomendación disponible",
+    "partially_available": "Evidencia parcial",
     "not_available": "Sin disponibilidad actual",
+}
+_EVIDENCE_STATE_LABELS: Final = {
+    "available": "evidencia suficiente",
+    "insufficient_labeled_attempts": "pocos intentos históricos etiquetados",
+    "insufficient_matches": "pocos partidos distintos con datos",
+    "no_observed_category": "esta categoría nunca se observó históricamente",
+    "not_applicable": "no aplica a esta orientación",
+    "not_available": "sin datos históricos disponibles",
 }
 
 
@@ -974,149 +1220,604 @@ def _opportunity_label(pattern_id: str, tactical_opportunity: str) -> str:
     )
 
 
-def _evidence_table(evidence: PublicEvidenceComponent) -> None:
-    st.markdown(
-        "| Métrica | Valor |\n"
-        "|---|---|\n"
-        f"| Activaciones etiquetadas | {evidence.labeled_activations} |\n"
-        f"| Éxitos / fallos | {evidence.successes} / {evidence.failures} |\n"
-        f"| Partidos distintos | {evidence.distinct_matches} |"
+def _card_visual_status(card: PublicPatternCard) -> str:
+    """Estado visual cerrado de una tarjeta: no depende solo de
+    ``card.status`` (que no distingue "toda la tarjeta abstiene" de
+    "parcialmente disponible con alguna categoria abstenida"): unifica
+    ambos con texto e icono, nunca solo con color."""
+    if card.status == "not_available":
+        return "not_available"
+    if card.status == "available" and card.abstained_options_count == 0:
+        return "available"
+    if card.scored_options == 0:
+        return "abstained"
+    return "partial"
+
+
+def _evidence_summary_line(evidence: PublicEvidenceComponent) -> str:
+    rate = (
+        f"{evidence.success_rate:.0%}" if evidence.success_rate is not None else "—"
     )
-    if evidence.success_rate is not None:
-        lower = (
-            f"{evidence.wilson_lower:.3f}"
-            if evidence.wilson_lower is not None
-            else "—"
+    envelope = (
+        f" (intervalo {evidence.wilson_lower:.0%}–{evidence.wilson_upper:.0%})"
+        if evidence.wilson_lower is not None and evidence.wilson_upper is not None
+        else ""
+    )
+    return (
+        f"{rate}{envelope} · {evidence.labeled_activations} intentos etiquetados · "
+        f"{evidence.distinct_matches} partidos distintos"
+    )
+
+
+def _render_option_explanation(option: PublicOption) -> None:
+    executor_state = _EVIDENCE_STATE_LABELS.get(
+        option.executor_evidence.evidence_state, option.executor_evidence.evidence_state
+    )
+    opponent_state = _EVIDENCE_STATE_LABELS.get(
+        option.opponent_allowed_evidence.evidence_state,
+        option.opponent_allowed_evidence.evidence_state,
+    )
+    st.markdown(f"**Categoría {option.category}**")
+    if option.status == "ranked":
+        st.write(
+            f"Combina, a partes iguales, lo que le funcionó históricamente al "
+            f"jugador ({_evidence_summary_line(option.executor_evidence)}) con lo "
+            f"que el rival permitió históricamente en esa misma categoría "
+            f"({_evidence_summary_line(option.opponent_allowed_evidence)})."
         )
-        upper = (
-            f"{evidence.wilson_upper:.3f}"
-            if evidence.wilson_upper is not None
-            else "—"
+    else:
+        st.write(
+            f"Sin recomendación para esta categoría: evidencia del jugador "
+            f"({executor_state}) y/o del rival ({opponent_state}) por debajo "
+            f"del mínimo exigido para clasificar con garantías."
         )
-        st.markdown(
-            f"Tasa de éxito: **{evidence.success_rate:.3f}** "
-            f"(intervalo descriptivo {lower}–{upper}); estado de la "
-            f"evidencia: {evidence.evidence_state}."
-        )
+    if option.canonical_explanation:
+        st.caption(option.canonical_explanation)
 
 
 def _render_card(card: PublicPatternCard) -> None:
+    visual_status = _card_visual_status(card)
     opportunity = _opportunity_label(card.pattern_id, card.tactical_opportunity)
     actor = _ACTOR_LABELS.get(card.actor, card.actor)
-    st.markdown(
-        f"### {card.pattern_id} · {opportunity} ({actor}) — "
-        f"{_CARD_STATUS_LABELS.get(card.status, card.status)}"
-    )
-    if card.status == "not_available":
-        st.write(
-            "Sin opciones tácticas para este patrón en esta orientación "
-            "(el sistema abstiene; no se inventan recomendaciones)."
-        )
-        return
-    ranked = sorted(
-        (option for option in card.options if option.status == "ranked"),
-        key=lambda option: option.rank_position or 0,
-    )
-    if ranked:
-        rows = [
-            "| Puesto | Categoría | Estado | Puntuación | Intervalo |"
-            "|---|---|---|---|---|"
-        ]
-        for option in ranked:
-            score = (
-                f"{option.score:.3f}" if option.score is not None else "—"
+    with st.container(border=True):
+        st.markdown(f"#### {_PATTERN_SHORT_LABELS.get(card.pattern_id, card.pattern_id)}")
+        st.caption(f"{opportunity} · rol: {actor}")
+        if visual_status == "available":
+            st.success("Recomendación disponible", icon="✅")
+        elif visual_status == "partial":
+            st.warning("Evidencia parcial: algunas categorías abstienen", icon="⚠️")
+        elif visual_status == "abstained":
+            st.info("El sistema abstiene: evidencia insuficiente", icon="ℹ️")
+        else:
+            st.error("Sin datos para esta orientación", icon="⛔")
+
+        if visual_status == "not_available":
+            st.write(
+                "No hay opciones tácticas registradas para este patrón en "
+                "esta orientación."
             )
-            if option.descriptive_uncertainty_envelope is not None:
-                envelope = (
-                    f"{option.descriptive_uncertainty_envelope[0]:.3f}–"
-                    f"{option.descriptive_uncertainty_envelope[1]:.3f}"
+            return
+
+        ranked = sorted(
+            (option for option in card.options if option.status == "ranked"),
+            key=lambda option: option.rank_position or 0,
+        )
+        if ranked:
+            top = ranked[0]
+            columns = st.columns(3)
+            columns[0].metric(
+                "Recomendación principal", top.category,
+                help="Categoría mejor situada según el score descriptivo."
+            )
+            columns[1].metric(
+                "Score",
+                f"{top.score:.0%}" if top.score is not None else "—",
+            )
+            columns[2].metric(
+                "Muestra",
+                f"{top.executor_evidence.labeled_activations} intentos",
+            )
+            if len(ranked) > 1:
+                alternatives = ", ".join(
+                    f"{option.category} ({option.score:.0%})"
+                    if option.score is not None
+                    else option.category
+                    for option in ranked[1:]
                 )
-            else:
-                envelope = "—"
-            rows.append(
-                f"| {option.rank_position} | {option.category} | "
-                f"{_OPTION_STATUS_LABELS.get(option.status, option.status)} | "
-                f"{score} | {envelope} |"
+                st.caption(f"Alternativas permitidas por el contrato: {alternatives}")
+        else:
+            st.write(
+                "Ninguna categoría alcanza el mínimo de evidencia para "
+                "clasificarse en este patrón (abstención del sistema)."
             )
-        st.markdown("\n".join(rows))
-    else:
-        st.write(
-            "Sin opciones clasificadas para este patrón en esta "
-            "orientación (evidencia insuficiente: abstención del sistema)."
-        )
-    if card.top_options:
-        st.write(f"**Opciones destacadas (top_k):** {', '.join(card.top_options)}")
-    abstained = [
-        option for option in card.options
-        if option.status == "abstained_insufficient_evidence"
-    ]
-    if abstained:
-        with st.expander(
-            f"Opciones con evidencia insuficiente ({len(abstained)})"
-        ):
-            for option in abstained:
-                st.write(f"- {option.category}: abstención del sistema.")
-    with st.expander("Evidencia y explicaciones (contrato público)"):
-        for option in ranked:
-            if option.canonical_explanation:
-                st.write(f"**{option.category}** — {option.canonical_explanation}")
-            st.caption("Perspectiva ejecutora:")
-            _evidence_table(option.executor_evidence)
-            st.caption("Perspectiva rival (permitida):")
-            _evidence_table(option.opponent_allowed_evidence)
+
+        abstained = [
+            option for option in card.options
+            if option.status == "abstained_insufficient_evidence"
+        ]
+        if abstained:
+            categories = ", ".join(option.category for option in abstained)
+            st.caption(
+                f"Categorías con abstención por evidencia insuficiente: {categories}."
+            )
+
+        with st.expander("¿Por qué aparece esta recomendación?"):
+            for option in ranked or card.options:
+                _render_option_explanation(option)
 
 
-def render_public_recommendation(model: PublicRecommendation) -> None:
-    """Render legible y cerrado de la ficha pública P11 (sin PII propio)."""
-    st.success(
-        f"Estado de la ficha: {_RESPONSE_STATUS_LABELS.get(model.status, model.status)}"
-    )
-    if model.status_reason_codes:
-        st.caption(
-            "Motivos del estado: " + ", ".join(model.status_reason_codes)
-        )
+def render_public_recommendation(
+    model: PublicRecommendation,
+    *,
+    player: str | None = None,
+    opponent: str | None = None,
+    as_of_date: str | None = None,
+) -> None:
+    """Render legible y cerrado de la ficha pública P11 (sin PII propio).
+
+    ``player``/``opponent``/``as_of_date`` son EXCLUSIVAMENTE contexto
+    ya conocido por quien llama (la propia consulta que el usuario
+    construyo en la UI): el payload ``model`` nunca los contiene (P11
+    los prohibe explicitamente). Son opcionales y de solo contexto
+    visual; omitirlos preserva el comportamiento previo."""
+    if player is not None or opponent is not None or as_of_date is not None:
+        with st.container(border=True):
+            st.markdown("##### Resumen del enfrentamiento")
+            columns = st.columns(3)
+            columns[0].markdown(f"**Jugador**\n\n{player or '—'}")
+            columns[1].markdown(f"**Rival**\n\n{opponent or '—'}")
+            columns[2].markdown(f"**Fecha de corte**\n\n{as_of_date or '—'}")
+            st.caption(
+                "La fecha de corte marca el límite: solo se usa evidencia "
+                "histórica estrictamente anterior a ella."
+            )
+
     if model.status == "not_available":
         st.warning(
             "Esta orientación no tiene opciones tácticas disponibles "
             "ahora. El sistema abstiene: no se muestran recomendaciones "
-            "inventadas."
+            "inventadas.",
+            icon="⚠️",
         )
         return
+
+    scored_patterns = tuple(card for card in model.cards if card.scored_options > 0)
+    abstained_patterns = tuple(
+        card for card in model.cards if card.scored_options == 0
+    )
+    if scored_patterns:
+        highlight_labels = []
+        for card in scored_patterns:
+            label = _PATTERN_SHORT_LABELS.get(card.pattern_id, card.pattern_id)
+            top_ranked = next(
+                (option for option in card.options if option.status == "ranked"
+                 and option.rank_position == 1),
+                None,
+            )
+            highlight_labels.append(
+                f"{label} → {top_ranked.category}" if top_ranked is not None else label
+            )
+        highlights = ", ".join(highlight_labels)
+        st.markdown(
+            f"**Resumen:** de las {len(model.cards)} oportunidades tácticas "
+            f"analizadas, **{len(scored_patterns)}** tienen recomendación "
+            f"({highlights}) y **{len(abstained_patterns)}** se abstienen por "
+            f"evidencia insuficiente. No existe un ranking único entre "
+            f"patrones distintos (cada oportunidad se evalúa de forma "
+            f"independiente)."
+        )
+    else:
+        st.markdown(
+            f"**Resumen:** ninguna de las {len(model.cards)} oportunidades "
+            f"tácticas analizadas alcanza el mínimo de evidencia; el "
+            f"sistema abstiene en todas."
+        )
+
     for card in model.cards:
         _render_card(card)
-    if model.limitations:
-        with st.expander("Limitaciones del método (público)"):
+
+    with st.expander("Ver detalles técnicos y trazabilidad"):
+        st.caption(
+            f"Estado global: {_RESPONSE_STATUS_LABELS.get(model.status, model.status)}"
+        )
+        if model.status_reason_codes:
+            st.caption("Motivos: " + ", ".join(model.status_reason_codes))
+        for card in model.cards:
+            st.markdown(f"**{card.pattern_id}**")
+            for option in card.options:
+                st.write(
+                    f"- {option.category}: "
+                    f"{_OPTION_STATUS_LABELS.get(option.status, option.status)} · "
+                    f"reason_codes={', '.join(option.reason_codes) or '—'}"
+                )
+                st.caption("Perspectiva ejecutora — " + _evidence_summary_line(option.executor_evidence))
+                st.caption(
+                    "Perspectiva rival (permitida) — "
+                    + _evidence_summary_line(option.opponent_allowed_evidence)
+                )
+        if model.limitations:
+            st.markdown("**Limitaciones del método (contrato público):**")
             for limitation in model.limitations:
                 st.write(f"- {limitation}")
+
     st.info(
         "Las recomendaciones son evidencia histórica observacional, no "
         "causalidad ni garantía de éxito."
     )
 
 
-def form_inputs() -> tuple[str, str, date, str]:
-    """Formulario compartido jugador/rival/fecha (reutilizable por P19)."""
-    st.subheader("Consultar una orientación")
-    with st.form("recommendation_form", clear_on_submit=True):
-        player = st.text_input(
-            "Jugador",
-            key="recommendation_player",
-            max_chars=UI_MAX_IDENTIFIER_LENGTH,
-            help="1-64 caracteres; sin espacios al final, sin '/','\\','://','..','~' ni caracteres de control.",
+# --------------------------------------------------------------------- #
+# Estado del asistente de 3 pasos (P25): claves estables de              #
+# ``st.session_state`` y logica PURA de invalidacion en cascada (nunca   #
+# se conserva una seleccion de una consulta anterior). Las funciones     #
+# ``apply_*_selection_change`` operan sobre cualquier objeto tipo mapa   #
+# mutable (un ``dict`` en los tests, ``st.session_state`` en la app      #
+# real) para poder probarlas sin un runtime de Streamlit.                #
+# --------------------------------------------------------------------- #
+
+STATE_PLAYER: Final = "tct_wizard_player"
+STATE_OPPONENT: Final = "tct_wizard_opponent"
+STATE_DATE: Final = "tct_wizard_date"
+STATE_PLAYER_SEARCH: Final = "tct_wizard_player_search"
+STATE_OPPONENT_SEARCH: Final = "tct_wizard_opponent_search"
+STATE_RESULT: Final = "tct_wizard_result"
+STATE_RESULT_KEY: Final = "tct_wizard_result_key"
+
+
+def apply_player_selection_change(state: object, new_player: str | None) -> None:
+    """Cambiar de jugador limpia rival y fecha (y cualquier resultado
+    previo, que ya no corresponde a la seleccion vigente)."""
+    if state.get(STATE_PLAYER) != new_player:
+        state[STATE_OPPONENT] = None
+        state[STATE_DATE] = None
+        state[STATE_RESULT] = None
+        state[STATE_RESULT_KEY] = None
+    state[STATE_PLAYER] = new_player
+
+
+def apply_opponent_selection_change(state: object, new_opponent: str | None) -> None:
+    """Cambiar de rival limpia la fecha (y cualquier resultado previo)."""
+    if state.get(STATE_OPPONENT) != new_opponent:
+        state[STATE_DATE] = None
+        state[STATE_RESULT] = None
+        state[STATE_RESULT_KEY] = None
+    state[STATE_OPPONENT] = new_opponent
+
+
+def apply_date_selection_change(state: object, new_date: str | None) -> None:
+    """Cambiar la fecha invalida cualquier resultado previo (correspondia
+    a otra fecha de corte)."""
+    if state.get(STATE_DATE) != new_date:
+        state[STATE_RESULT] = None
+        state[STATE_RESULT_KEY] = None
+    state[STATE_DATE] = new_date
+
+
+_UI_CSS: Final = """
+<style>
+.tct-header {
+  padding: 1.1rem 1.5rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0d1b2a 0%, #1b5e20 100%);
+  color: #ffffff;
+  margin-bottom: 1rem;
+}
+.tct-header h1 { margin: 0; font-size: 1.55rem; }
+.tct-header p { margin: 0.2rem 0 0 0; opacity: 0.92; font-size: 0.92rem; }
+.tct-header .tct-status { margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600; }
+.tct-step-label {
+  font-weight: 600;
+  color: #1b5e20;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.1rem;
+}
+</style>
+"""
+
+_HEADER_STATUS_LABELS: Final = {
+    "checking": "Comprobando disponibilidad del servicio…",
+    "up": "Servicio disponible",
+    "down": "Servicio no disponible",
+}
+
+
+def _inject_base_styles() -> None:
+    """CSS pequeno, estatico (sin interpolar nada dinamico) y encapsulado
+    en una sola llamada; nunca inserta contenido derivado del usuario o
+    de la API en HTML sin escapar."""
+    st.markdown(_UI_CSS, unsafe_allow_html=True)
+
+
+def _render_header(status_key: str) -> None:
+    status_text = _HEADER_STATUS_LABELS.get(status_key, _HEADER_STATUS_LABELS["checking"])
+    st.markdown(
+        '<div class="tct-header">'
+        "<h1>Recomendador táctico de tenis</h1>"
+        "<p>Evidencia histórica observacional para preparar tu próximo partido</p>"
+        f'<p class="tct-status">{status_text}</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def check_api_health(
+    client: object, base_url: str, *, container_mode: bool = False
+) -> bool:
+    """Indicador de disponibilidad para el encabezado; nunca lanza, solo
+    informa (no bloquea el resto de la interfaz si falla)."""
+    try:
+        validated = _resolve_base_url(base_url, container_mode=container_mode)
+        payload = _stream_get_json(client, f"{validated}/healthz")
+    except Exception:
+        return False
+    return type(payload) is dict and payload.get("status") == "ok"
+
+
+def _searchable_select(
+    *,
+    label: str,
+    search_key: str,
+    select_key: str,
+    options: tuple[str, ...],
+    disabled: bool,
+    help_text: str,
+    on_change: object,
+) -> str | None:
+    """Control buscable nativo de Streamlit: un ``text_input`` filtra en
+    Python (insensible a mayúsculas/minúsculas y acentos, ver
+    ``filter_catalog_by_search``) las opciones que ofrece un
+    ``st.selectbox`` nativo. Comportamiento: clic muestra todo el
+    catálogo, escribir filtra, sin coincidencias se explica en vez de
+    dejar el desplegable vacío sin contexto."""
+    st.markdown(f'<p class="tct-step-label">{label}</p>', unsafe_allow_html=True)
+    search = st.text_input(
+        "Buscar", key=search_key, disabled=disabled, label_visibility="collapsed",
+        placeholder="Escribe para filtrar…",
+    )
+    filtered = filter_catalog_by_search(options, search) if not disabled else ()
+    if disabled:
+        st.selectbox(
+            label, options=(), key=select_key, index=None, disabled=True,
+            label_visibility="collapsed", help=help_text,
         )
-        opponent = st.text_input(
-            "Rival",
-            key="recommendation_opponent",
-            max_chars=UI_MAX_IDENTIFIER_LENGTH,
-            help="Mismas reglas que jugador; debe ser diferente del jugador.",
+        return None
+    if not options:
+        st.info("Catálogo no disponible en este momento.", icon="ℹ️")
+        return None
+    if not filtered:
+        st.warning("Sin coincidencias para esa búsqueda.", icon="🔍")
+        return None
+    selection = st.selectbox(
+        label, options=filtered, key=select_key, index=None,
+        placeholder="Selecciona…", label_visibility="collapsed",
+        help=help_text, on_change=on_change,
+    )
+    return selection
+
+
+def _new_short_lived_client() -> httpx.Client:
+    return httpx.Client(
+        timeout=UI_REQUEST_TIMEOUT_SECONDS,
+        follow_redirects=False,
+        trust_env=False,
+        limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
+    )
+
+
+@st.cache_data(ttl=UI_CATALOG_CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_players_catalog(
+    base_url: str, *, container_mode: bool
+) -> tuple[str, ...]:
+    """Envoltorio cacheado (TTL acotado, ver ``UI_CATALOG_CACHE_TTL_
+    SECONDS``) de ``fetch_players_catalog``: evita repetir la misma
+    peticion HTTP en reruns consecutivos de Streamlit (p.ej. cada
+    interaccion del usuario) sin dejar de reflejar el snapshot
+    inmutable en como mucho ``UI_CATALOG_CACHE_TTL_SECONDS``. Streamlit
+    NUNCA cachea una llamada que termina en excepcion: un fallo aqui se
+    reintenta en la siguiente llamada, nunca queda "pegado" en cache."""
+    client = _new_short_lived_client()
+    try:
+        return fetch_players_catalog(client, base_url, container_mode=container_mode)
+    finally:
+        client.close()
+
+
+@st.cache_data(ttl=UI_CATALOG_CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_opponents_catalog(
+    base_url: str, player_id: str, *, container_mode: bool
+) -> tuple[CatalogOpponent, ...]:
+    client = _new_short_lived_client()
+    try:
+        return fetch_opponents_catalog(
+            client, base_url, player_id, container_mode=container_mode
         )
-        chosen_date = st.date_input(
-            "Fecha (as of)", value=date.today(), key="recommendation_as_of_date"
+    finally:
+        client.close()
+
+
+@st.cache_data(ttl=UI_CATALOG_CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_dates_catalog(
+    base_url: str, player_id: str, opponent_id: str, *, container_mode: bool
+) -> tuple[str, ...]:
+    client = _new_short_lived_client()
+    try:
+        return fetch_dates_catalog(
+            client, base_url, player_id, opponent_id, container_mode=container_mode
         )
-        submitted = st.form_submit_button(
-            "Solicitar recomendación", key="recommendation_submit"
+    finally:
+        client.close()
+
+
+def run_recommendation_experience(base_url: str, *, container_mode: bool) -> None:
+    """Flujo completo de 3 pasos (jugador → rival → fecha) y resultado.
+
+    Compartido entre el modo local (P18) y el modo contenedor (P19):
+    solo cambia como se resuelve/valida ``base_url`` (parametro
+    ``container_mode``); el resto de la logica -- catalogos, cache
+    acotada, invalidacion en cascada, una unica peticion de
+    recomendacion por envio -- es identica."""
+    _inject_base_styles()
+    client = _new_short_lived_client()
+    try:
+        api_up = check_api_health(client, base_url, container_mode=container_mode)
+        _render_header("up" if api_up else "down")
+        if not api_up:
+            st.error(
+                "No se pudo conectar con el servicio de recomendaciones. "
+                "Comprueba que está en marcha e inténtalo de nuevo.",
+                icon="🚫",
+            )
+            return
+
+        try:
+            players = _cached_players_catalog(base_url, container_mode=container_mode)
+        except CatalogUnavailableError as error:
+            st.error(f"Catálogo de jugadores no disponible: {error}", icon="🚫")
+            return
+        if not players:
+            st.warning(
+                "Todavía no hay jugadores disponibles en el catálogo.", icon="ℹ️"
+            )
+            return
+
+        st.markdown("#### Paso 1 · 2 · 3 — Jugador, rival y fecha")
+        columns = st.columns(3)
+        with columns[0]:
+            selected_player = _searchable_select(
+                label="1 · Jugador",
+                search_key=STATE_PLAYER_SEARCH,
+                select_key=STATE_PLAYER,
+                options=players,
+                disabled=False,
+                help_text="Jugador para el que se solicita la recomendación.",
+                on_change=lambda: apply_player_selection_change(
+                    st.session_state, st.session_state.get(STATE_PLAYER)
+                ),
+            )
+
+        opponents: tuple[CatalogOpponent, ...] = ()
+        opponent_options: tuple[str, ...] = ()
+        if selected_player is not None:
+            try:
+                opponents = _cached_opponents_catalog(
+                    base_url, selected_player, container_mode=container_mode
+                )
+            except CatalogUnavailableError as error:
+                with columns[1]:
+                    st.error(f"Rivales no disponibles: {error}", icon="🚫")
+            opponent_options = tuple(item.opponent_id for item in opponents)
+        with columns[1]:
+            selected_opponent = _searchable_select(
+                label="2 · Rival",
+                search_key=STATE_OPPONENT_SEARCH,
+                select_key=STATE_OPPONENT,
+                options=opponent_options,
+                disabled=selected_player is None,
+                help_text="Solo se muestran rivales con enfrentamientos reales.",
+                on_change=lambda: apply_opponent_selection_change(
+                    st.session_state, st.session_state.get(STATE_OPPONENT)
+                ),
+            )
+            if selected_player is None:
+                st.caption("Selecciona primero un jugador.")
+            elif opponents:
+                counts = {item.opponent_id: item.matchup_count for item in opponents}
+                if selected_opponent in counts:
+                    st.caption(
+                        f"{counts[selected_opponent]} fecha(s) de corte válidas."
+                    )
+
+        date_options: tuple[str, ...] = ()
+        if selected_player is not None and selected_opponent is not None:
+            try:
+                date_options = _cached_dates_catalog(
+                    base_url, selected_player, selected_opponent,
+                    container_mode=container_mode,
+                )
+            except CatalogUnavailableError as error:
+                with columns[2]:
+                    st.error(f"Fechas no disponibles: {error}", icon="🚫")
+        with columns[2]:
+            st.markdown('<p class="tct-step-label">3 · Fecha de corte</p>', unsafe_allow_html=True)
+            if selected_player is None or selected_opponent is None:
+                st.selectbox(
+                    "Fecha", options=(), key=STATE_DATE, index=None, disabled=True,
+                    label_visibility="collapsed",
+                )
+                st.caption("Selecciona jugador y rival primero.")
+                selected_date = None
+            elif not date_options:
+                st.warning(
+                    "No hay fechas de corte válidas para esta pareja.", icon="⚠️"
+                )
+                selected_date = None
+            else:
+                selected_date = st.selectbox(
+                    "Fecha", options=date_options, key=STATE_DATE, index=None,
+                    placeholder="Selecciona…", label_visibility="collapsed",
+                    format_func=_format_spanish_date,
+                    on_change=lambda: apply_date_selection_change(
+                        st.session_state, st.session_state.get(STATE_DATE)
+                    ),
+                    help="Fecha de corte: solo cuenta evidencia estrictamente anterior a ella.",
+                )
+                st.caption(
+                    "Fecha de corte de la recomendación (no la fecha de un "
+                    "enfrentamiento concreto)."
+                )
+
+        query_ready = (
+            selected_player is not None
+            and selected_opponent is not None
+            and selected_date is not None
         )
-    return player, opponent, chosen_date, "" if not submitted else "sent"
+        submitted = st.button(
+            "Generar recomendación táctica",
+            key="tct_wizard_submit",
+            disabled=not query_ready,
+            type="primary",
+        )
+        if not query_ready:
+            st.caption(
+                "Completa jugador, rival y fecha para generar la recomendación."
+            )
+            return
+        if not submitted:
+            return
+        with st.spinner("Consultando el servicio…"):
+            outcome = fetch_recommendation(
+                client, base_url, selected_player, selected_opponent, selected_date,
+                container_mode=container_mode,
+            )
+        if outcome.kind == _UI_LOCAL_OUTCOMES["ok"] and outcome.model is not None:
+            render_public_recommendation(
+                outcome.model,
+                player=selected_player,
+                opponent=selected_opponent,
+                as_of_date=_format_spanish_date(selected_date),
+            )
+            return
+        label = outcome_kind_label(outcome)
+        st.error(f"{outcome.message} {label}".strip())
+    finally:
+        client.close()
+
+
+_SPANISH_MONTHS: Final = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def _format_spanish_date(raw: str) -> str:
+    """``YYYY-MM-DD`` -> "1 de enero de 2031" (solo presentacion; el
+    valor interno enviado a la API sigue siendo el ISO estricto)."""
+    if not _is_civil_iso_date(raw):
+        return raw
+    parsed = date.fromisoformat(raw)
+    return f"{parsed.day} de {_SPANISH_MONTHS[parsed.month - 1]} de {parsed.year}"
 
 
 def main() -> None:
@@ -1127,15 +1828,10 @@ def main() -> None:
     logging.getLogger("httpcore").disabled = True
     st.set_page_config(
         page_title="Recomendador táctico (local)",
-        layout="wide",
+        layout="centered",
         initial_sidebar_state="collapsed",
     )
-    st.title("Recomendador táctico de tenis (evidencia histórica)")
-    st.caption(
-        "Interfaz local sobre la API P17. Las fichas son evidencia "
-        "histórica observacional: no afirman causalidad ni garantizan "
-        "éxito. Todo el tráfico es loopback local."
-    )
+    _inject_base_styles()
     with st.expander("Configuración del servicio local"):
         raw_url = st.text_input(
             "URL del servicio local",
@@ -1147,54 +1843,11 @@ def main() -> None:
         base_url = validate_api_base_url(raw_url)
     except ValueError:
         base_url = None
-    player_raw, opponent_raw, chosen_date, submitted = form_inputs()
-    if not submitted:
-        st.caption(
-            "Introduce jugador, rival y fecha y pulsa "
-            "«Solicitar recomendación»."
-        )
-        return
     if base_url is None:
+        _render_header("down")
         st.error("La URL del servicio no es una URL loopback segura válida.")
         return
-    try:
-        player = validate_local_identifier(player_raw, "player")
-        opponent = validate_local_identifier(opponent_raw, "opponent")
-    except _IdentifierContractError as error:
-        st.error(str(error))
-        return
-    if player == opponent:
-        st.error("Jugador y rival deben ser diferentes.")
-        return
-    if isinstance(chosen_date, datetime):
-        as_of_raw = chosen_date.date().isoformat()
-    elif isinstance(chosen_date, date):
-        as_of_raw = chosen_date.isoformat()
-    else:
-        as_of_raw = ""
-    try:
-        as_of = validate_local_date(as_of_raw)
-    except _IdentifierContractError as error:
-        st.error(str(error))
-        return
-    client = httpx.Client(
-        timeout=UI_REQUEST_TIMEOUT_SECONDS,
-        follow_redirects=False,
-        trust_env=False,
-        limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
-    )
-    try:
-        with st.spinner("Consultando el servicio local…"):
-            outcome = fetch_recommendation(
-                client, base_url, player, opponent, as_of
-            )
-    finally:
-        client.close()
-    if outcome.kind == _UI_LOCAL_OUTCOMES["ok"] and outcome.model is not None:
-        render_public_recommendation(outcome.model)
-        return
-    label = outcome_kind_label(outcome)
-    st.error(f"{outcome.message} {label}".strip())
+    run_recommendation_experience(base_url, container_mode=False)
 
 
 if __name__ == "__main__":
@@ -1202,8 +1855,19 @@ if __name__ == "__main__":
 
 
 __all__ = (
+    "STATE_DATE",
+    "STATE_OPPONENT",
+    "STATE_OPPONENT_SEARCH",
+    "STATE_PLAYER",
+    "STATE_PLAYER_SEARCH",
+    "STATE_RESULT",
+    "STATE_RESULT_KEY",
     "UI_API_BASE_DEFAULT",
     "UI_API_HOST_ALLOWED",
+    "UI_CATALOG_CACHE_TTL_SECONDS",
+    "UI_CATALOG_DATES_PATH_TEMPLATE",
+    "UI_CATALOG_OPPONENTS_PATH_TEMPLATE",
+    "UI_CATALOG_PLAYERS_PATH",
     "UI_CONTAINER_API_BASE_URL",
     "UI_MAX_IDENTIFIER_LENGTH",
     "UI_MAX_PORT",
@@ -1211,18 +1875,28 @@ __all__ = (
     "UI_MIN_PORT",
     "UI_RECOMMENDATIONS_PATH",
     "UI_REQUEST_TIMEOUT_SECONDS",
+    "CatalogOpponent",
+    "CatalogUnavailableError",
     "PublicContractError",
     "PublicEvidenceComponent",
     "PublicOption",
     "PublicPatternCard",
     "PublicRecommendation",
     "UIOutcome",
+    "apply_date_selection_change",
+    "apply_opponent_selection_change",
+    "apply_player_selection_change",
+    "check_api_health",
+    "fetch_dates_catalog",
+    "fetch_opponents_catalog",
+    "fetch_players_catalog",
     "fetch_recommendation",
-    "form_inputs",
+    "filter_catalog_by_search",
     "main",
     "outcome_kind_label",
     "parse_public_recommendation",
     "render_public_recommendation",
+    "run_recommendation_experience",
     "validate_api_base_url",
     "validate_container_api_base_url",
     "validate_local_date",

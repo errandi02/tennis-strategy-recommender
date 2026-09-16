@@ -52,6 +52,7 @@ SERVICE_REASON_CODES: Final = frozenset(
         "provider_unavailable",
         "upstream_contract_violation",
         "internal_error",
+        "catalog_not_found",
     )
 )
 SERVICE_STAGES: Final = frozenset(
@@ -61,6 +62,7 @@ SERVICE_STAGES: Final = frozenset(
         "result_validation",
         "public_projection",
         "internal",
+        "catalog_lookup",
     )
 )
 SERVICE_LOG_EVENTS: Final = frozenset(
@@ -69,11 +71,22 @@ SERVICE_LOG_EVENTS: Final = frozenset(
         "recommendation_requested",
         "recommendation_completed",
         "recommendation_rejected",
+        "catalog_completed",
+        "catalog_rejected",
     )
 )
 SERVICE_LOG_METHODS: Final = frozenset(("GET", "POST"))
+# Solo rutas SIN parametros de camino: el log compara contra
+# ``request.url.path`` (la ruta YA resuelta, con valores reales
+# sustituidos), nunca contra la plantilla de la ruta. Las dos rutas de
+# catalogo parametrizadas (.../opponents, .../opponents/.../dates)
+# quedan deliberadamente fuera de este catalogo cerrado: si se
+# incluyeran, la comparacion nunca cerraria de forma segura sin
+# filtrar player_id/opponent_id reales en el campo ``endpoint`` del
+# log. Sus eventos se siguen registrando (event/request_id/status_code/
+# stage/reason_code), solo sin el campo ``endpoint``.
 SERVICE_LOG_ENDPOINTS: Final = frozenset(
-    ("/healthz", "/api/v1/recommendations")
+    ("/healthz", "/api/v1/recommendations", "/api/v1/catalog/players")
 )
 SERVICE_LOG_STATUS_CODES: Final = frozenset(
     (200, 404, 422, 500, 502, 503, 504)
@@ -172,6 +185,17 @@ class InternalServiceError(TacticalRecommendationServiceError):
     public_message = "Fallo interno sin clasificar del servicio."
 
 
+class CatalogNotFoundError(TacticalRecommendationServiceError):
+    """El catalogo de descubrimiento (P25) no tiene datos para ese
+    identificador o pareja exacta (jugador, rival u orientacion
+    desconocidos en el snapshot)."""
+
+    reason_code = "catalog_not_found"
+    stage = "catalog_lookup"
+    retryable = False
+    public_message = "El catalogo solicitado no tiene datos disponibles para ese identificador."
+
+
 _SERVICE_ERROR_CATALOG: Final = MappingProxyType(
     {
         "invalid_request": InvalidRequestError,
@@ -181,6 +205,7 @@ _SERVICE_ERROR_CATALOG: Final = MappingProxyType(
         "provider_unavailable": ProviderUnavailableError,
         "upstream_contract_violation": UpstreamContractViolationError,
         "internal_error": InternalServiceError,
+        "catalog_not_found": CatalogNotFoundError,
     }
 )
 
@@ -194,6 +219,7 @@ def _service_integrity_check() -> None:
         "provider_unavailable": "provider_lookup",
         "upstream_contract_violation": "result_validation",
         "internal_error": "internal",
+        "catalog_not_found": "catalog_lookup",
     }
     if set(_SERVICE_ERROR_CATALOG) != SERVICE_REASON_CODES:
         raise RuntimeError("El catalogo de errores no coincide con los reason codes.")

@@ -38,10 +38,14 @@ from types import MappingProxyType
 from typing import Final, Literal
 
 from fastapi import FastAPI, Request, Response
+from fastapi import Path as FastApiPath
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from src.recommender.tactical_recommendation_catalog import (
+    MAX_CATALOG_IDENTIFIER_LENGTH,
+)
 from src.recommender.tactical_recommendation_contract import (
     CARD_RECONCILIATIONS,
     RESPONSE_RECONCILIATIONS,
@@ -69,8 +73,16 @@ from src.recommender.tactical_recommendation_service import (
 
 HEALTH_PATH: Final = "/healthz"
 RECOMMENDATIONS_PATH: Final = "/api/v1/recommendations"
+CATALOG_PLAYERS_PATH: Final = "/api/v1/catalog/players"
+CATALOG_OPPONENTS_PATH: Final = "/api/v1/catalog/players/{player_id}/opponents"
+CATALOG_DATES_PATH: Final = (
+    "/api/v1/catalog/players/{player_id}/opponents/{opponent_id}/dates"
+)
 HEALTH_OPERATION_ID: Final = "tactical_recommendation_health"
 RECOMMENDATIONS_OPERATION_ID: Final = "tactical_recommendation_post"
+CATALOG_PLAYERS_OPERATION_ID: Final = "tactical_catalog_players"
+CATALOG_OPPONENTS_OPERATION_ID: Final = "tactical_catalog_opponents"
+CATALOG_DATES_OPERATION_ID: Final = "tactical_catalog_dates"
 API_LOGGER_NAME: Final = "tactical_recommendation_api"
 
 _CIVIL_ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -84,6 +96,7 @@ _ERROR_HTTP_STATUS: Final = MappingProxyType(
         "provider_unavailable": 503,
         "upstream_contract_violation": 502,
         "internal_error": 500,
+        "catalog_not_found": 404,
     }
 )
 
@@ -98,6 +111,7 @@ ReasonCode = Literal[
     "provider_unavailable",
     "upstream_contract_violation",
     "internal_error",
+    "catalog_not_found",
 ]
 Stage = Literal[
     "request_validation",
@@ -105,6 +119,7 @@ Stage = Literal[
     "result_validation",
     "public_projection",
     "internal",
+    "catalog_lookup",
 ]
 
 
@@ -296,6 +311,40 @@ class HealthResponseSchema(BaseModel):
     status: Literal["ok"]
 
 
+class CatalogPlayersResponseSchema(BaseModel):
+    """Catalogo P25 de jugadores con recomendacion real disponible."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    players: tuple[str, ...]
+
+
+class CatalogOpponentSchema(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    opponent_id: str = Field(min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH)
+    matchup_count: int = Field(ge=1)
+
+
+class CatalogOpponentsResponseSchema(BaseModel):
+    """Catalogo P25 de rivales reales de un jugador."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    player_id: str = Field(min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH)
+    opponents: tuple[CatalogOpponentSchema, ...]
+
+
+class CatalogDatesResponseSchema(BaseModel):
+    """Catalogo P25 de fechas de corte validas para una pareja exacta."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    player_id: str = Field(min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH)
+    opponent_id: str = Field(min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH)
+    as_of_dates: tuple[date, ...]
+
+
 def _schema_integrity_check() -> None:
     """Impide que los schemas documentales diverjan de las dataclasses P11."""
     pairs = (
@@ -383,9 +432,22 @@ def _log_service_event(
         _LOGGER.info("service_event %s status_code=%d", event, status_code)
 
 
+def _require_catalog_provider(provider: object) -> None:
+    """Misma disciplina que ``TacticalRecommendationService.__init__``:
+    falla en construccion, no en el primer request, si el provider
+    inyectado no implementa el catalogo P25 (mismo objeto que ya sirve
+    ``fetch_tactical_prioritization``, fuente unica)."""
+    for method_name in ("list_players", "list_opponents", "list_as_of_dates"):
+        if not callable(getattr(provider, method_name, None)):
+            raise TypeError(
+                f"provider debe implementar {method_name}(...) para el catalogo P25."
+            )
+
+
 def create_app(provider: object) -> FastAPI:
     """Crea la instancia HTTP con provider inyectado (sin I/O al importar)."""
     service = TacticalRecommendationService(provider)
+    _require_catalog_provider(provider)
     app = FastAPI(
         title=f"{SERVICE_NAME} http",
         version=SERVICE_API_VERSION,
@@ -555,6 +617,100 @@ def create_app(provider: object) -> FastAPI:
                 "ETag": f'"{fingerprint}"',
                 "X-Request-ID": request_id,
             },
+        )
+
+    catalog_responses: dict[int, dict[str, object]] = {
+        422: _envelope("Identificador fuera del contrato cerrado (invalid_request)."),
+        500: _envelope("Fallo interno sanitizado (internal_error)."),
+        502: _envelope(
+            "Catalogo derivado fuera de contrato (upstream_contract_violation)."
+        ),
+    }
+    catalog_lookup_responses: dict[int, dict[str, object]] = {
+        **catalog_responses,
+        404: _envelope("Sin datos de catalogo para ese identificador (catalog_not_found)."),
+    }
+
+    @app.get(
+        CATALOG_PLAYERS_PATH,
+        operation_id=CATALOG_PLAYERS_OPERATION_ID,
+        summary="Jugadores con recomendacion real disponible (P25).",
+        response_model=CatalogPlayersResponseSchema,
+        responses=catalog_responses,
+    )
+    async def get_catalog_players(request: Request) -> Response:
+        request_id = _request_id(request)
+        players = provider.list_players()
+        _log_service_event(
+            request, 200, event="catalog_completed", request_id=request_id,
+        )
+        return Response(
+            content=_json_bytes({"players": list(players)}),
+            media_type="application/json",
+            headers={"X-Request-ID": request_id},
+        )
+
+    @app.get(
+        CATALOG_OPPONENTS_PATH,
+        operation_id=CATALOG_OPPONENTS_OPERATION_ID,
+        summary="Rivales reales de un jugador (P25).",
+        response_model=CatalogOpponentsResponseSchema,
+        responses=catalog_lookup_responses,
+    )
+    async def get_catalog_opponents(
+        request: Request,
+        player_id: str = FastApiPath(
+            min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH
+        ),
+    ) -> Response:
+        request_id = _request_id(request)
+        opponents = provider.list_opponents(player_id)
+        _log_service_event(
+            request, 200, event="catalog_completed", request_id=request_id,
+        )
+        body = {
+            "player_id": player_id,
+            "opponents": [
+                {"opponent_id": item.opponent_id, "matchup_count": item.matchup_count}
+                for item in opponents
+            ],
+        }
+        return Response(
+            content=_json_bytes(body),
+            media_type="application/json",
+            headers={"X-Request-ID": request_id},
+        )
+
+    @app.get(
+        CATALOG_DATES_PATH,
+        operation_id=CATALOG_DATES_OPERATION_ID,
+        summary="Fechas de corte validas para una pareja exacta (P25).",
+        response_model=CatalogDatesResponseSchema,
+        responses=catalog_lookup_responses,
+    )
+    async def get_catalog_dates(
+        request: Request,
+        player_id: str = FastApiPath(
+            min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH
+        ),
+        opponent_id: str = FastApiPath(
+            min_length=1, max_length=MAX_CATALOG_IDENTIFIER_LENGTH
+        ),
+    ) -> Response:
+        request_id = _request_id(request)
+        as_of_dates = provider.list_as_of_dates(player_id, opponent_id)
+        _log_service_event(
+            request, 200, event="catalog_completed", request_id=request_id,
+        )
+        body = {
+            "player_id": player_id,
+            "opponent_id": opponent_id,
+            "as_of_dates": [item.isoformat() for item in as_of_dates],
+        }
+        return Response(
+            content=_json_bytes(body),
+            media_type="application/json",
+            headers={"X-Request-ID": request_id},
         )
 
     return app
