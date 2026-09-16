@@ -481,15 +481,40 @@ def compute_specification_fingerprint(
 # Puerta de autorizacion unica (P20 -> P21): ninguna via alternativa     #
 # --------------------------------------------------------------------- #
 
-REAL_TEST_EVALUATION_AUTHORIZED: Final = False
+REAL_TEST_EVALUATION_AUTHORIZED: Final = True
 
-# El test nunca se ha evaluado: los cuatro contadores permanecen en
-# cero. A diferencia de P15/P16 (snapshot de validacion, ya ejecutado
-# una vez), P20 no tiene ninguna ejecucion real previa que registrar.
+# P23: autorizacion puntual para UNA UNICA ejecucion manual y desacoplada,
+# concedida tras una auditoria completa de P20-P22 (dos defectos de
+# senal/cierre -- ausencia de manejo de SIGTERM y ``sys.argv`` no
+# propagado a ``main()`` en ``final_sealed_evaluation_runner.py`` --
+# encontrados y corregidos ANTES de autorizar, nunca despues).
+#
+# Regla de cierre OBLIGATORIA: en cuanto la ejecucion autorizada arriba
+# termine -- completada, fallida o interrumpida -- un COMMIT POSTERIOR
+# debe devolver esta constante a ``False`` y actualizar los cuatro
+# contadores de abajo. Esta autorizacion nunca se reutiliza para una
+# segunda ejecucion; una nueva evaluacion exigiria una nueva decision
+# humana explicita repitiendo este mismo preflight.
+REAL_TEST_EVALUATION_AUTHORIZATION_REASON: Final = (
+    "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+)
+
+# El test aun no se ha evaluado: los cuatro contadores permanecen en
+# cero hasta que la unica ejecucion autorizada arriba se complete, falle
+# o se interrumpa (ver regla de cierre justo encima). A diferencia de
+# P15/P16 (snapshot de validacion, ya ejecutado una vez), P20 no tenia
+# ninguna ejecucion real previa que registrar.
 PREVIOUS_REAL_TEST_EVALUATIONS: Final = 0
 COMPLETED_REAL_TEST_EVALUATIONS: Final = 0
 INTERRUPTED_REAL_TEST_EVALUATIONS: Final = 0
 AUTOMATIC_RETRIES_PERFORMED: Final = 0
+
+# Sin reintento automatico bajo ninguna circunstancia: un fallo o una
+# interrupcion consumen la unica autorizacion de arriba (regla de
+# cierre); una segunda ejecucion exige una NUEVA decision humana
+# explicita, nunca un reintento silencioso del mismo proceso.
+AUTOMATIC_RETRY: Final = False
+AUTOMATIC_RETRY_POLICY: Final = "single_manual_execution_without_automatic_retry"
 
 REAL_TEST_EVALUATION_BLOCK_REASON_CODE: Final = (
     "real_test_evaluation_not_yet_authorized"
@@ -506,18 +531,19 @@ def run_real_test_evaluation(*_args: object, **_kwargs: object) -> None:
 
     Firma deliberadamente generica (``*_args``/``**_kwargs``): no
     acepta ninguna ruta real ni configuracion externa. Con
-    ``REAL_TEST_EVALUATION_AUTHORIZED=False`` (el unico valor posible
-    hoy) esta funcion SIEMPRE aborta antes de tocar ``os.environ``,
-    Parquet, CSV, el snapshot privado o cualquier lector real.
+    ``REAL_TEST_EVALUATION_AUTHORIZED=False`` esta funcion SIEMPRE
+    aborta antes de tocar ``os.environ``, Parquet, CSV, el snapshot
+    privado o cualquier lector real. Tras P23, la constante puede
+    valer ``True`` para una unica ejecucion manual autorizada (ver
+    regla de cierre junto a la constante); no hay ninguna otra via de
+    ejecucion en ningun caso.
 
     P22 (``src.analysis.final_sealed_evaluation_runner``) completo la
     frontera productiva real: el ``import`` es local (dentro de esta
     funcion, no a nivel de modulo) para que ``final_sealed_evaluation``
     siga sin ningun efecto ni dependencia de pandas/pyarrow al
     importarse, y para evitar un ciclo de importacion con el runner
-    (que si importa este modulo). La linea de abajo permanece
-    INALCANZABLE mientras ``REAL_TEST_EVALUATION_AUTHORIZED`` sea
-    ``False``; no hay ninguna otra via de ejecucion.
+    (que si importa este modulo).
     """
     if not REAL_TEST_EVALUATION_AUTHORIZED:
         raise SystemExit(REAL_TEST_EVALUATION_BLOCK_REASON)
@@ -601,11 +627,13 @@ def build_preflight_manifest() -> dict[str, object]:
 def publish_preflight_manifest(path: Path | None = None) -> Path:
     """Escribe el manifiesto de forma atomica (mkstemp + os.replace).
 
-    Sin resultados reales: ``authorized`` es siempre False y los
-    contadores de ejecucion son siempre cero mientras
-    ``REAL_TEST_EVALUATION_AUTHORIZED`` lo sea. No lee ningun dato de
-    origen; su unica entrada es la especificacion congelada de este
-    modulo.
+    Sin resultados reales en ningun caso: ``authorized`` refleja la
+    constante del modulo tal cual (``False`` o, tras P23, ``True``
+    mientras la unica ejecucion autorizada siga pendiente) y los
+    cuatro contadores de ejecucion permanecen en cero hasta que esa
+    ejecucion se complete, falle o se interrumpa. Este manifiesto no
+    lee ningun dato de origen ni ejecuta nada; su unica entrada es la
+    especificacion congelada de este modulo.
     """
     destination = PREFLIGHT_MANIFEST_PATH if path is None else path
     manifest = build_preflight_manifest()
@@ -661,6 +689,7 @@ __all__ = (
     "PROTOCOLS_SHARE_POPULATION",
     "RANKING_SCOPE",
     "REAL_TEST_EVALUATION_AUTHORIZED",
+    "REAL_TEST_EVALUATION_AUTHORIZATION_REASON",
     "REAL_TEST_EVALUATION_BLOCK_REASON",
     "REAL_TEST_EVALUATION_BLOCK_REASON_CODE",
     "REQUESTED_TOP_K",
@@ -673,6 +702,8 @@ __all__ = (
     "TEST_END_DATE",
     "TEST_START_DATE",
     "AUTOMATIC_RETRIES_PERFORMED",
+    "AUTOMATIC_RETRY",
+    "AUTOMATIC_RETRY_POLICY",
     "COMPLETED_REAL_TEST_EVALUATIONS",
     "INTERRUPTED_REAL_TEST_EVALUATIONS",
     "PREVIOUS_REAL_TEST_EVALUATIONS",

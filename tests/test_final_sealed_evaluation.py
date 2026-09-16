@@ -169,17 +169,39 @@ def test_specification_fingerprint_is_deterministic() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_single_authorization_gate_is_false() -> None:
-    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is False
+def test_single_authorization_gate_is_true_with_closure_contract() -> None:
+    """P23: autorizacion puntual para UNA UNICA ejecucion manual, tras
+    auditoria completa de P20-P22 sin defectos bloqueantes restantes.
+    Razon y politica de cierre son literales exactos; los cuatro
+    contadores permanecen en cero hasta que esa unica ejecucion se
+    complete, falle o se interrumpa -- momento en el que un COMMIT
+    POSTERIOR (no este) debe devolver la puerta a False."""
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZATION_REASON == (
+        "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+    )
     assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 0
     assert p20.COMPLETED_REAL_TEST_EVALUATIONS == 0
     assert p20.INTERRUPTED_REAL_TEST_EVALUATIONS == 0
     assert p20.AUTOMATIC_RETRIES_PERFORMED == 0
+    assert p20.AUTOMATIC_RETRY is False
+    assert p20.AUTOMATIC_RETRY_POLICY == (
+        "single_manual_execution_without_automatic_retry"
+    )
 
 
 def test_run_real_test_evaluation_raises_systemexit_before_any_io(
     monkeypatch,
 ) -> None:
+    """Ejercita deliberadamente la rama con la puerta CERRADA (parcheada
+    a False aqui): el valor real y vigente del modulo es True tras
+    P23 (una unica ejecucion manual autorizada), pero esta rama de
+    codigo debe seguir siendo correcta para el estado POSTERIOR al
+    cierre (tras completar/fallar/interrumpir esa ejecucion, un commit
+    futuro vuelve la constante a False; este test protege ese camino
+    sin depender de si ya ocurrio)."""
+    monkeypatch.setattr(p20, "REAL_TEST_EVALUATION_AUTHORIZED", False)
+
     def _forbidden(*_args, **_kwargs):
         raise AssertionError("I/O invocado con la evaluacion sin autorizar.")
 
@@ -191,7 +213,10 @@ def test_run_real_test_evaluation_raises_systemexit_before_any_io(
         p20.run_real_test_evaluation("cualquier", "argumento", clave="valor")
 
 
-def test_run_real_test_evaluation_never_retries_and_is_idempotent() -> None:
+def test_run_real_test_evaluation_never_retries_and_is_idempotent(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(p20, "REAL_TEST_EVALUATION_AUTHORIZED", False)
     for _ in range(3):
         with pytest.raises(SystemExit) as exc_info:
             p20.run_real_test_evaluation()
@@ -200,10 +225,13 @@ def test_run_real_test_evaluation_never_retries_and_is_idempotent() -> None:
 
 
 def test_no_bypass_env_var_or_cli_flag_exists() -> None:
-    """No existe segunda puerta: ninguna variable de entorno cambia el gate."""
+    """No existe segunda puerta: ninguna variable de entorno cambia el
+    valor de la constante del modulo. Se envenena con "false" -- el
+    valor OPUESTO al real (True tras P23) -- para demostrar que el
+    entorno tampoco puede APAGARLA, no solo que no puede encenderla."""
     monkeypatch_env = dict(os.environ)
-    monkeypatch_env["REAL_TEST_EVALUATION_AUTHORIZED"] = "true"
-    monkeypatch_env["TENNIS_FINAL_EVALUATION_FORCE"] = "1"
+    monkeypatch_env["REAL_TEST_EVALUATION_AUTHORIZED"] = "false"
+    monkeypatch_env["TENNIS_FINAL_EVALUATION_FORCE"] = "0"
     completed = subprocess.run(
         [
             sys.executable,
@@ -218,7 +246,7 @@ def test_no_bypass_env_var_or_cli_flag_exists() -> None:
         check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "False"
+    assert completed.stdout.strip() == "True"
 
 
 # --------------------------------------------------------------------- #
@@ -427,7 +455,7 @@ def test_import_subprocess_sin_efectos(tmp_path) -> None:
         check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "False"
+    assert completed.stdout.strip() == "True"
     assert completed.stderr == ""
     after = {item.name for item in tmp_path.iterdir()}
     assert after == before
@@ -444,10 +472,14 @@ def test_no_real_source_reader_referenced_anywhere() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_manifest_status_preflight_authorized_false_zero_counts() -> None:
+def test_manifest_status_preflight_authorized_true_zero_counts() -> None:
+    """Tras P23, ``authorized`` refleja la constante vigente (True para
+    la unica ejecucion manual autorizada); los contadores permanecen en
+    cero porque esa ejecucion aun no se ha completado, fallado ni
+    interrumpido."""
     manifest = p20.build_preflight_manifest()
     assert manifest["status"] == "preflight_only"
-    assert manifest["authorized"] is False
+    assert manifest["authorized"] is True
     assert manifest["test_evaluation_runs"] == 0
     assert manifest["previous_real_test_evaluations"] == 0
     assert manifest["interrupted_real_test_evaluations"] == 0
@@ -472,7 +504,7 @@ def test_publish_preflight_manifest_writes_atomically(tmp_path) -> None:
     assert destination.is_file()
     loaded = json.loads(destination.read_text(encoding="utf-8"))
     assert loaded["status"] == "preflight_only"
-    assert loaded["authorized"] is False
+    assert loaded["authorized"] is True
     remaining = list(tmp_path.iterdir())
     assert remaining == [destination]
 

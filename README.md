@@ -198,34 +198,36 @@ sin ejecutarla:
   patrón con precedente de código para ese scoring); P04/P05/P06 se
   limitan a cobertura/disponibilidad, ya calculable desde el contrato
   público P11.
-- **Autorización**: `REAL_TEST_EVALUATION_AUTHORIZED: Final = False`.
-  Puerta única, sin variable de entorno, sin flag CLI, sin `--force`,
-  sin segunda puerta ni reintento automático. Contadores, todos en
-  cero: `PREVIOUS_REAL_TEST_EVALUATIONS`,
+- **Autorización**: puerta única `REAL_TEST_EVALUATION_AUTHORIZED`, sin
+  variable de entorno, sin flag CLI, sin `--force`, sin segunda puerta
+  ni reintento automático. Contadores `PREVIOUS_REAL_TEST_EVALUATIONS`,
   `COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`,
-  `AUTOMATIC_RETRIES_PERFORMED`.
+  `AUTOMATIC_RETRIES_PERFORMED` — todos en cero mientras la única
+  ejecución autorizada (ver P23 abajo) no se complete, falle o se
+  interrumpa.
 - Manifiesto de preflight versionado, sin resultados reales:
   [`reports/final_evaluation_preflight.json`](reports/final_evaluation_preflight.json)
-  (`status: preflight_only`, `authorized: false`,
-  `test_evaluation_runs: 0`).
+  (`status: preflight_only`, `test_evaluation_runs: 0`; `authorized`
+  refleja la puerta vigente).
 
-**P21 será una decisión humana separada y explícita** para autorizar
-la evaluación real; P20 no la habilita. Ninguna política, threshold,
-scoring o modelo puede ajustarse después de observar cualquier
-resultado del test, bajo ningún protocolo.
+**P21 fue la decisión humana separada y explícita** para completar la
+frontera de evaluación real (compute-only, sin autorizar su ejecución);
+P23 (ver más abajo) es la autorización puntual de una única ejecución
+manual. Ninguna política, threshold, scoring o modelo puede ajustarse
+después de observar cualquier resultado del test, bajo ningún
+protocolo.
 
-### Ruta productiva completa, aún cerrada (P21-P22)
+### Ruta productiva completa (P21-P22)
 
 P21 añadió el adaptador y evaluador compute-only (`src/analysis/
 final_sealed_evaluation_{adapter,orchestrator}.py`); P22 completó la
-ruta productiva con `src/analysis/final_sealed_evaluation_runner.py`,
-de modo que una futura autorización solo necesita cambiar
+ruta productiva con `src/analysis/final_sealed_evaluation_runner.py`
+(publicación atómica de un único bundle, frontera de 9 pasos), de modo
+que autorizar una ejecución solo requiere cambiar
 `REAL_TEST_EVALUATION_AUTHORIZED` (en `final_sealed_evaluation.py`,
-única asignación en todo el repositorio; `final_sealed_evaluation.py`
-delega a este runner mediante un import local, sin reasignar la
-puerta). Los contadores `PREVIOUS_REAL_TEST_EVALUATIONS`,
-`COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`
-y `AUTOMATIC_RETRIES_PERFORMED` permanecen en cero.
+única asignación en todo el repositorio; el runner solo importa y lee
+esa constante, nunca la reasigna). Ver P23 abajo para el estado actual
+de esa autorización.
 
 **Baseline poblacional P02** (decisión humana congelada, contrato
 propio de P22 — no forma parte de la especificación ni del fingerprint
@@ -235,9 +237,9 @@ idéntica para `rolling_origin` y `frozen`, `null` si el denominador
 etiquetado es cero, con numerador/denominador/regla/fingerprint propio
 incluidos explícitamente en la serialización agregada.
 
-**Artefactos finales** (aún no generados: `REAL_TEST_EVALUATION_AUTHORIZED`
-sigue en `False`): un único bundle atómico, nunca cinco archivos
-sueltos —
+**Artefactos finales** (aún no generados: ver P23 para el estado de la
+autorización y la ejecución pendiente): un único bundle atómico, nunca
+cinco archivos sueltos —
 
 ```
 reports/final_evaluation/
@@ -260,6 +262,119 @@ publica este bundle; el adaptador y el orquestador son funciones puras
 sin conocimiento de la autorización, por lo que la garantía de "cero
 evaluación real" depende de no invocarlos nunca directamente con datos
 reales fuera de esa única frontera productiva.
+
+Interrupción gestionada (P23): `execute_real_sealed_test_evaluation`
+ejecuta los pasos 2-9 bajo un manejador de `SIGTERM`/`SIGINT` (mismo
+patrón que `src/api/runtime.py`, P17) que convierte la señal del
+sistema operativo en una excepción Python capturable
+(`_ManagedTerminationSignal`) en vez de matar el proceso a mitad de la
+publicación; `publish_final_evaluation_bundle` la limpia igual que
+cualquier otro fallo (borra el temporal, y el bundle final si el
+`os.replace` ya se había disparado) pero la relanza sin convertirla, de
+modo que `main()` reporte salida `130` (interrupción) en vez de `1`
+(fallo ordinario). Sin esta salvaguarda, un `SIGTERM` real durante la
+escritura dejaba un directorio temporal huérfano bajo `reports/`.
+
+### Autorización puntual de una única evaluación real (P23)
+
+Tras una auditoría completa de P20-P22 que encontró y corrigió dos
+defectos de cierre antes de autorizar (la gestión de `SIGTERM` descrita
+arriba, y un `sys.argv` que nunca llegaba a `main()` en el guard
+`if __name__ == "__main__":` del runner, dejando el rechazo de
+argumentos como código muerto en ejecución real), queda abierta una
+**única** autorización manual:
+
+```python
+REAL_TEST_EVALUATION_AUTHORIZED: Final = True
+REAL_TEST_EVALUATION_AUTHORIZATION_REASON: Final = (
+    "single_manual_final_sealed_test_evaluation_authorized_after_full_preflight"
+)
+AUTOMATIC_RETRY: Final = False
+AUTOMATIC_RETRY_POLICY: Final = "single_manual_execution_without_automatic_retry"
+```
+
+Los cuatro contadores (`PREVIOUS_REAL_TEST_EVALUATIONS`,
+`COMPLETED_REAL_TEST_EVALUATIONS`, `INTERRUPTED_REAL_TEST_EVALUATIONS`,
+`AUTOMATIC_RETRIES_PERFORMED`) permanecen en cero. **Regla de cierre
+obligatoria**: en cuanto la ejecución autorizada se complete, falle o
+se interrumpa, un commit posterior debe devolver
+`REAL_TEST_EVALUATION_AUTHORIZED` a `False` y actualizar esos
+contadores; esta autorización nunca se reutiliza para una segunda
+ejecución.
+
+**Comando exacto para la ejecución manual y desacoplada en Mac (NO
+EJECUTADO todavía)**. El CLI del runner ya es el "CLI mínimo cerrado"
+requerido: sin ruta alternativa a la fuente, sin `--force`/`--retry`,
+rechaza cualquier `argv` con salida `2` antes de tocar la puerta, y no
+necesita ningún argumento (por lo que no se pasa ninguna ruta privada
+por línea de comandos). Requiere haber activado antes el entorno conda
+correcto en esa misma terminal (`conda activate tennis-tfm`), para que
+el `python` heredado por el proceso desacoplado sea el correcto:
+
+```bash
+cd /ruta/al/repo/tennis-strategy-recommender || exit 1
+
+PIDFILE=~/Documents/final_sealed_evaluation.pid
+LOGFILE=~/Documents/final_sealed_evaluation.log
+EXITFILE=~/Documents/final_sealed_evaluation.exit
+BUNDLE_DIR=reports/final_evaluation
+
+for path in "$BUNDLE_DIR" "$PIDFILE" "$LOGFILE" "$EXITFILE"; do
+  if [ -e "$path" ]; then
+    echo "ABORT: $path ya existe; no se lanza (sin reintento, sin sobrescritura)." >&2
+    exit 1
+  fi
+done
+
+nohup sh -c '
+  python -m src.analysis.final_sealed_evaluation_runner
+  echo $? > ~/Documents/final_sealed_evaluation.exit
+' > "$LOGFILE" 2>&1 &
+WRAPPER_PID=$!
+echo "$WRAPPER_PID" > "$PIDFILE"
+disown "$WRAPPER_PID"
+
+nohup caffeinate -s -i -w "$WRAPPER_PID" > /dev/null 2>&1 &
+disown $!
+
+echo "Lanzado. PID=$WRAPPER_PID  PIDFILE=$PIDFILE  LOG=$LOGFILE  EXIT=$EXITFILE"
+```
+
+Notas de diseño:
+
+- `caffeinate -w "$WRAPPER_PID"` se ata al PID por número, no envuelve
+  ni ejecuta Python como su propio hijo (proceso independiente,
+  disownable por separado de la ejecución real).
+- El wrapper `sh -c` es el único mecanismo para persistir el código de
+  salida a disco una vez cerrada la terminal (un proceso completamente
+  desacoplado no puede depender de que la terminal original siga viva
+  para capturar su `$?`).
+- Precheck de ausencia de bundle/log/PID/exit ANTES de lanzar nada; sin
+  reintento en ningún punto del script.
+- Ningún dato sensible pasa por `argv`; el log solo puede contener, en
+  caso de fallo, una traza de Python sin identidades ni resultados
+  target-level (el runner nunca imprime esos datos; solo los escribe,
+  agregados, dentro del bundle).
+
+**Supervisión** (sin leer nunca el contenido del bundle ni del log más
+allá de una traza de error genérica):
+
+```bash
+# ¿sigue vivo?
+kill -0 "$(cat ~/Documents/final_sealed_evaluation.pid)" 2>/dev/null \
+  && echo running || echo finished
+
+# PID/CPU/memoria/tiempo transcurrido del wrapper y del hijo Python real
+ps -o pid,ppid,pcpu,pmem,etime,command -p "$(cat ~/Documents/final_sealed_evaluation.pid)"
+ps -o pid,pcpu,pmem,etime,command -p "$(pgrep -P "$(cat ~/Documents/final_sealed_evaluation.pid)")"
+
+# ¿existe ya el bundle final?
+ls -d reports/final_evaluation 2>/dev/null && echo BUNDLE_EXISTS || echo BUNDLE_ABSENT
+
+# código de salida (solo tras terminar: 0 completado y verificado,
+# 1 fallo, 130 interrumpido)
+cat ~/Documents/final_sealed_evaluation.exit 2>/dev/null
+```
 
 ## Primer hito
 

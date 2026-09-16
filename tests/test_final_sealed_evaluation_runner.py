@@ -12,17 +12,33 @@ evaluacion real autorizada (en cuyo caso debe permanecer BYTE A BYTE
 identico). No presupone ausencia permanente: los tests de este archivo
 siguen siendo ejecutables despues de que exista un bundle real.
 
-Cubre: puerta False antes de cualquier I/O, fuente ausente/directorio/
-symlink/no-regular, bundle preexistente bloqueado, serializacion
-determinista, JSON con claves duplicadas rechazado en verificacion,
-fallo al escribir/verificar CUALQUIERA de los cinco archivos deja cero
-bundle final y cero temporales, fallo del UNICO replace final deja
-cero bundle y cero temporales, ningun estado parcial visible antes del
-rename, exactamente un replace de publicacion, verificacion posterior
+Cubre: puerta cerrada (parcheada a False donde se ejercita ese camino)
+antes de cualquier I/O, fuente ausente/directorio/symlink/no-regular,
+bundle preexistente bloqueado, serializacion determinista, JSON con
+claves duplicadas rechazado en verificacion, fallo al escribir/
+verificar CUALQUIERA de los cinco archivos deja cero bundle final y
+cero temporales, fallo del UNICO replace final deja cero bundle y cero
+temporales, ningun estado parcial visible antes del rename, exactamente
+un replace de publicacion (y una unica llamada a cada una de fuente/
+evaluacion/publicacion en el runner completo), verificacion posterior
 del bundle completo, permisos privados, limites de tamano, cero
-reintentos, cero efectos al importar, variables de entorno simuladas
-sin abrir la puerta, y AST con una unica asignacion de
-``REAL_TEST_EVALUATION_AUTHORIZED`` (en P20, nunca reasignada aqui).
+reintentos (incluida ausencia de bucle en ``main()``), SIGTERM/SIGINT
+gestionados sin dejar temporales (simulado y con senal real de SO),
+argv real del CLI correctamente reenviado a ``main()``, cero efectos al
+importar, variables de entorno simuladas sin cambiar la puerta, y AST
+con una unica asignacion de ``REAL_TEST_EVALUATION_AUTHORIZED`` (en
+P20, nunca reasignada aqui).
+
+IMPORTANTE (P23): el valor VIGENTE (no parcheado) de
+``runner.REAL_TEST_EVALUATION_AUTHORIZED`` es ``True`` -- una unica
+ejecucion manual autorizada tras el preflight completo, ver
+``final_sealed_evaluation.py``. Todo test de este archivo que ejercite
+el camino "puerta cerrada" parchea explicitamente a False; todo test
+que ejercite el camino "autorizado" sigue inyectando un
+``source_reader`` sintetico o sustituyendo ``execute_real_sealed_test_
+evaluation``. Ningun test de este archivo invoca jamas el lector real
+ni deja que la ruta por defecto (``pd.read_parquet`` sobre la fuente
+contractual real) se ejecute.
 """
 
 from __future__ import annotations
@@ -157,7 +173,7 @@ def test_ast_p20_has_exactly_one_authorization_assignment() -> None:
 
     source = Path(p20.__file__).read_text(encoding="utf-8")
     assert len(_authorization_assignments(source)) == 1
-    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is False
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
 
 
 # --------------------------------------------------------------------- #
@@ -165,7 +181,14 @@ def test_ast_p20_has_exactly_one_authorization_assignment() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_execute_real_evaluation_aborts_before_source_reader_called() -> None:
+def test_execute_real_evaluation_aborts_before_source_reader_called(monkeypatch) -> None:
+    """Ejercita deliberadamente la rama con la puerta CERRADA (parcheada
+    a False aqui): el valor vigente hoy es True (P23, una unica
+    ejecucion manual autorizada); este test protege el camino
+    POSTERIOR al cierre de esa ejecucion (tras completarse, fallar o
+    interrumpirse, la puerta vuelve a False en un commit futuro)."""
+    monkeypatch.setattr(runner, "REAL_TEST_EVALUATION_AUTHORIZED", False)
+
     def _forbidden(_path):
         raise AssertionError("source_reader invocado con la puerta cerrada.")
 
@@ -174,7 +197,10 @@ def test_execute_real_evaluation_aborts_before_source_reader_called() -> None:
     assert str(exc_info.value) == runner._ERROR_MESSAGES["not_authorized"]
 
 
-def test_execute_real_evaluation_aborts_before_touching_bundle_dir(tmp_path) -> None:
+def test_execute_real_evaluation_aborts_before_touching_bundle_dir(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(runner, "REAL_TEST_EVALUATION_AUTHORIZED", False)
     pre_existing = tmp_path / "final_evaluation"
     pre_existing.mkdir()
     (pre_existing / "sentinel.txt").write_text("real-looking-but-untouched", encoding="utf-8")
@@ -188,15 +214,28 @@ def test_execute_real_evaluation_aborts_before_touching_bundle_dir(tmp_path) -> 
     )
 
 
-def test_main_returns_1_with_closed_gate_before_any_io() -> None:
+def test_main_returns_1_with_closed_gate_before_any_io(monkeypatch) -> None:
+    monkeypatch.setattr(runner, "REAL_TEST_EVALUATION_AUTHORIZED", False)
     assert runner.main([]) == 1
 
 
+def test_main_default_state_is_authorized_but_never_invoked_by_tests() -> None:
+    """P23: el valor VIGENTE (no parcheado) de la puerta es True -- una
+    unica ejecucion manual autorizada. Ningun test de este archivo
+    debe invocar ``runner.main([])``/``execute_real_sealed_test_
+    evaluation()`` bajo este valor real sin sustituir ``source_reader``
+    (eso dispararia una lectura real de la fuente contractual); este
+    test documenta y fija el valor esperado sin ejecutar nada mas."""
+    assert runner.REAL_TEST_EVALUATION_AUTHORIZED is True
+
+
 def test_no_bypass_env_var_opens_the_gate() -> None:
+    """Envenena con "false" -- el OPUESTO del valor real (True tras
+    P23) -- para demostrar que el entorno tampoco puede apagarla."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_ROOT)
-    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "true"
-    env["TENNIS_FINAL_EVALUATION_FORCE"] = "1"
+    env["REAL_TEST_EVALUATION_AUTHORIZED"] = "false"
+    env["TENNIS_FINAL_EVALUATION_FORCE"] = "0"
     completed = subprocess.run(
         [
             sys.executable, "-c",
@@ -206,7 +245,7 @@ def test_no_bypass_env_var_opens_the_gate() -> None:
         cwd=str(_ROOT), env=env, capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout.strip() == "False"
+    assert completed.stdout.strip() == "True"
 
 
 def test_cli_rejects_any_argv_without_touching_gate() -> None:
@@ -614,3 +653,240 @@ def test_full_runner_keyboard_interrupt_via_cli_returns_130(monkeypatch) -> None
         lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
     )
     assert runner.main() == 130
+
+
+# --------------------------------------------------------------------- #
+# H. P23: SIGTERM gestionado, argv real del CLI, llamadas unicas.        #
+#                                                                         #
+# ADVERTENCIA para quien anada tests a este archivo: tras P23, el valor  #
+# VIGENTE (no parcheado) de ``runner.REAL_TEST_EVALUATION_AUTHORIZED``   #
+# es ``True`` (una unica ejecucion manual autorizada, ver               #
+# ``final_sealed_evaluation.py``). Invocar ``runner.main()`` sin         #
+# argumentos o ``execute_real_sealed_test_evaluation()`` sin             #
+# ``source_reader`` explicito, SIN antes parchear la puerta a False o    #
+# sustituir ``execute_real_sealed_test_evaluation``/``source_reader``,   #
+# dispara una LECTURA REAL del Parquet contractual. Cada test que        #
+# ejercite el camino "puerta cerrada" debe parchear explicitamente a     #
+# False; cada test que ejercite el camino "autorizado" debe seguir       #
+# inyectando un ``source_reader`` sintetico como ya hace el resto de     #
+# este archivo.                                                         #
+# --------------------------------------------------------------------- #
+
+
+def test_normalize_execution_signals_restores_original_handlers() -> None:
+    import signal as signal_module
+
+    original_term = signal_module.getsignal(signal_module.SIGTERM)
+    original_int = signal_module.getsignal(signal_module.SIGINT)
+    with runner._normalize_execution_signals():
+        assert (
+            signal_module.getsignal(signal_module.SIGTERM)
+            is runner._raise_managed_termination
+        )
+        assert (
+            signal_module.getsignal(signal_module.SIGINT)
+            is runner._raise_managed_termination
+        )
+    assert signal_module.getsignal(signal_module.SIGTERM) is original_term
+    assert signal_module.getsignal(signal_module.SIGINT) is original_int
+
+
+def test_normalize_execution_signals_restores_handlers_even_on_exception() -> None:
+    import signal as signal_module
+
+    original_term = signal_module.getsignal(signal_module.SIGTERM)
+    with pytest.raises(ValueError):
+        with runner._normalize_execution_signals():
+            raise ValueError("fallo simulado dentro de la ventana gestionada")
+    assert signal_module.getsignal(signal_module.SIGTERM) is original_term
+
+
+def test_managed_termination_signal_during_write_propagates_unconverted_and_cleans_up(
+    small_outcome, tmp_path, monkeypatch
+) -> None:
+    """Simulado (sin senal real de SO): inyecta _ManagedTerminationSignal
+    durante la escritura y confirma que se relanza SIN convertirse en
+    publish_failed (para que main() pueda distinguir 130 de 1), y que
+    el temporal se borra igual que ante cualquier otro fallo."""
+    bundle_dir = tmp_path / "final_evaluation"
+    real_open = open
+
+    def _flaky_open(path, mode="r", *args, **kwargs):
+        if "wb" in mode:
+            raise runner._ManagedTerminationSignal
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _flaky_open)
+    with pytest.raises(runner._ManagedTerminationSignal):
+        runner.publish_final_evaluation_bundle(small_outcome, bundle_dir=bundle_dir)
+    assert not bundle_dir.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_managed_termination_signal_during_replace_propagates_unconverted_and_cleans_up(
+    small_outcome, tmp_path, monkeypatch
+) -> None:
+    bundle_dir = tmp_path / "final_evaluation"
+
+    def _flaky_replace(_src, _dst):
+        raise runner._ManagedTerminationSignal
+
+    monkeypatch.setattr(runner.os, "replace", _flaky_replace)
+    with pytest.raises(runner._ManagedTerminationSignal):
+        runner.publish_final_evaluation_bundle(small_outcome, bundle_dir=bundle_dir)
+    assert not bundle_dir.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_real_sigterm_during_publication_is_caught_and_cleans_up(
+    small_outcome, tmp_path, monkeypatch
+) -> None:
+    """SIGTERM REAL de sistema operativo (no simulado), entregado
+    durante la fase de escritura del bundle mientras los manejadores de
+    ``_normalize_execution_signals`` estan instalados: debe capturarse
+    como ``_ManagedTerminationSignal``, limpiar el temporal por
+    completo y no dejar bundle final. Verificado previamente de forma
+    manual en este mismo entorno (Windows) con
+    ``signal.raise_signal(signal.SIGTERM)``."""
+    import signal as signal_module
+
+    bundle_dir = tmp_path / "final_evaluation"
+    real_open = open
+    raised = {"done": False}
+
+    def _signal_then_open(path, mode="r", *args, **kwargs):
+        if "wb" in mode and not raised["done"]:
+            raised["done"] = True
+            signal_module.raise_signal(signal_module.SIGTERM)
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _signal_then_open)
+    with runner._normalize_execution_signals():
+        with pytest.raises(runner._ManagedTerminationSignal):
+            runner.publish_final_evaluation_bundle(small_outcome, bundle_dir=bundle_dir)
+    assert not bundle_dir.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_full_runner_managed_termination_signal_via_cli_returns_130(monkeypatch) -> None:
+    _authorized_runner_env(monkeypatch)
+    monkeypatch.setattr(
+        runner,
+        "execute_real_sealed_test_evaluation",
+        lambda **_kwargs: (_ for _ in ()).throw(runner._ManagedTerminationSignal()),
+    )
+    assert runner.main() == 130
+
+
+def test_ast_main_has_no_retry_loop() -> None:
+    """Sin bucle de reintento en ``main()``: un fallo o una
+    interrupcion consumen la unica autorizacion (regla de cierre de
+    P23); una segunda ejecucion exige una nueva invocacion manual, no
+    un reintento automatico dentro del propio proceso."""
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main_def = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    for node in ast.walk(main_def):
+        assert not isinstance(node, (ast.For, ast.While)), (
+            "main() no debe contener ningun bucle de reintento."
+        )
+
+
+def test_cli_subprocess_real_argv_rejects_unknown_flags_with_exit_2() -> None:
+    """Prueba de regresion del bug corregido en P23: el guard
+    ``if __name__ == \"__main__\":`` antes llamaba a ``main()`` SIN
+    argumentos, dejando ``if argv: return 2`` como codigo muerto en
+    ejecucion real (cualquier flag tecleado por un usuario se ignoraba
+    en silencio). Solo se invoca aqui con argumentos que DEBEN
+    rechazarse antes de tocar la puerta o cualquier I/O (salida 2);
+    nunca sin argumentos, para no arriesgar una evaluacion real ahora
+    que la puerta vale True (P23)."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_ROOT)
+    for bad_args in (["--force"], ["--retry"], ["some-positional-path"]):
+        completed = subprocess.run(
+            [
+                sys.executable, "-m",
+                "src.analysis.final_sealed_evaluation_runner", *bad_args,
+            ],
+            cwd=str(_ROOT), env=env, capture_output=True, text=True, check=False,
+        )
+        assert completed.returncode == 2, (bad_args, completed.stdout, completed.stderr)
+
+
+def test_full_runner_calls_source_reader_exactly_once(
+    small_cardinalities, tmp_path, monkeypatch
+) -> None:
+    _authorized_runner_env(monkeypatch)
+    bundle_dir = tmp_path / "final_evaluation"
+    source = tmp_path / "synthetic-source.parquet"
+    source.write_bytes(b"synthetic-not-real-parquet")
+    monkeypatch.setattr(runner, "FINAL_SEALED_EVALUATION_SOURCE_PATH", source)
+
+    calls = []
+
+    def _counting_reader(_path):
+        calls.append(_path)
+        return _small_points_dataframe(train=2, validation=2, test=2, first_serve="4")
+
+    runner.execute_real_sealed_test_evaluation(
+        source_reader=_counting_reader, bundle_dir=bundle_dir
+    )
+    assert len(calls) == 1
+
+
+def test_full_runner_calls_evaluate_final_sealed_test_exactly_once(
+    small_cardinalities, tmp_path, monkeypatch
+) -> None:
+    _authorized_runner_env(monkeypatch)
+    bundle_dir = tmp_path / "final_evaluation"
+    source = tmp_path / "synthetic-source.parquet"
+    source.write_bytes(b"synthetic-not-real-parquet")
+    monkeypatch.setattr(runner, "FINAL_SEALED_EVALUATION_SOURCE_PATH", source)
+
+    calls = []
+    real_evaluate = runner.evaluate_final_sealed_test
+
+    def _counting_evaluate(*args, **kwargs):
+        calls.append(1)
+        return real_evaluate(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "evaluate_final_sealed_test", _counting_evaluate)
+
+    def _synthetic_reader(_path):
+        return _small_points_dataframe(train=2, validation=2, test=2, first_serve="4")
+
+    runner.execute_real_sealed_test_evaluation(
+        source_reader=_synthetic_reader, bundle_dir=bundle_dir
+    )
+    assert len(calls) == 1
+
+
+def test_full_runner_calls_publish_exactly_once(
+    small_cardinalities, tmp_path, monkeypatch
+) -> None:
+    _authorized_runner_env(monkeypatch)
+    bundle_dir = tmp_path / "final_evaluation"
+    source = tmp_path / "synthetic-source.parquet"
+    source.write_bytes(b"synthetic-not-real-parquet")
+    monkeypatch.setattr(runner, "FINAL_SEALED_EVALUATION_SOURCE_PATH", source)
+
+    calls = []
+    real_publish = runner.publish_final_evaluation_bundle
+
+    def _counting_publish(*args, **kwargs):
+        calls.append(1)
+        return real_publish(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "publish_final_evaluation_bundle", _counting_publish)
+
+    def _synthetic_reader(_path):
+        return _small_points_dataframe(train=2, validation=2, test=2, first_serve="4")
+
+    runner.execute_real_sealed_test_evaluation(
+        source_reader=_synthetic_reader, bundle_dir=bundle_dir
+    )
+    assert len(calls) == 1

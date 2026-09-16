@@ -1,11 +1,15 @@
-"""P22: runner productivo completo pero cerrado, y serializacion/
-publicacion atomica del bundle de artefactos finales de la evaluacion
-sellada. Gobernado por la UNICA puerta
+"""P22: runner productivo completo, y serializacion/publicacion
+atomica del bundle de artefactos finales de la evaluacion sellada.
+Gobernado por la UNICA puerta
 ``final_sealed_evaluation.REAL_TEST_EVALUATION_AUTHORIZED`` (P20, sin
-reasignar aqui: solo se importa y se lee). Mientras sea ``False`` --
-el unico valor posible hoy -- ``execute_real_sealed_test_evaluation``
-aborta en su primer paso, antes de cualquier ``open``, ``stat`` de la
-fuente, pandas/pyarrow, lectura, construccion o escritura.
+reasignar aqui: solo se importa y se lee). Con la puerta en ``False``,
+``execute_real_sealed_test_evaluation`` aborta en su primer paso,
+antes de cualquier ``open``, ``stat`` de la fuente, pandas/pyarrow,
+lectura, construccion o escritura. Autorizacion puntual (P23): una
+UNICA ejecucion manual y desacoplada queda autorizada -- ver
+``final_sealed_evaluation.py`` para el contrato exacto de cierre
+(un commit posterior debe devolver la puerta a ``False`` y
+actualizar los contadores tras completar/fallar/interrumpir).
 
 Bundle atomico (revision tras hallazgo de diseno): cinco ``os.replace``
 independientes con rollback NO son una transaccion -- durante la
@@ -32,10 +36,14 @@ import io
 import json
 import os
 import shutil
+import signal
 import stat
+import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
 from typing import Final
 
 import pandas as pd
@@ -121,6 +129,51 @@ def _fail(reason_code: str) -> FinalSealedEvaluationRunnerError:
     return FinalSealedEvaluationRunnerError(
         _ERROR_MESSAGES[reason_code], reason_code=reason_code
     )
+
+
+# --------------------------------------------------------------------- #
+# SIGTERM/SIGINT gestionados (revision P23): sin esto, una terminacion   #
+# por senal durante la publicacion mata el proceso sin ejecutar ningun   #
+# bloque except/finally de Python, dejando el directorio temporal del    #
+# bundle huerfano bajo reports/. Mismo patron que P17
+# (src/api/runtime.py): instala manejadores que convierten la senal en  #
+# una excepcion Python capturable SOLO durante la ejecucion real, y      #
+# restaura los manejadores originales al salir, con o sin excepcion.     #
+# --------------------------------------------------------------------- #
+
+
+class _ManagedTerminationSignal(Exception):
+    """SIGTERM/SIGINT capturados de forma gestionada durante la
+    ejecucion real. Hereda de ``Exception`` (no ``BaseException``)
+    deliberadamente: debe fluir a traves de los mismos bloques
+    ``except Exception`` de limpieza de ``publish_final_evaluation_
+    bundle`` que cualquier otro fallo, para que el temporal se borre
+    igual; esos bloques la vuelven a lanzar SIN convertirla en
+    ``FinalSealedEvaluationRunnerError`` para que ``main`` distinga una
+    terminacion (salida 130) de un fallo ordinario (salida 1)."""
+
+    __slots__ = ()
+
+
+def _raise_managed_termination(signum: int, frame: FrameType | None) -> None:
+    del signum, frame
+    raise _ManagedTerminationSignal
+
+
+@contextmanager
+def _normalize_execution_signals() -> Iterator[None]:
+    """Instala manejadores de SIGTERM/SIGINT solo durante la ejecucion
+    real y los restaura siempre al salir (con o sin excepcion)."""
+    managed = (signal.SIGTERM, signal.SIGINT)
+    originals: dict[int, object] = {}
+    try:
+        for managed_signal in managed:
+            originals[managed_signal] = signal.getsignal(managed_signal)
+            signal.signal(managed_signal, _raise_managed_termination)
+        yield
+    finally:
+        for managed_signal, original in originals.items():
+            signal.signal(managed_signal, original)
 
 
 # --------------------------------------------------------------------- #
@@ -500,12 +553,23 @@ def publish_final_evaluation_bundle(
             pass
         _fsync_directory_best_effort(temp_dir)
         _verify_bundle_directory(temp_dir)
+    except _ManagedTerminationSignal:
+        # SIGTERM/SIGINT durante la escritura/verificacion: limpia el
+        # temporal igual que ante cualquier fallo, pero preserva la
+        # identidad de la senal (no la convierte en publish_failed)
+        # para que main() distinga terminacion (130) de fallo (1).
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise _fail("publish_failed") from None
 
     try:
         os.replace(temp_dir, bundle_dir)
+    except _ManagedTerminationSignal:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(bundle_dir, ignore_errors=True)
+        raise
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
         shutil.rmtree(bundle_dir, ignore_errors=True)
@@ -552,24 +616,32 @@ def execute_real_sealed_test_evaluation(
     """Unica frontera productiva real, en el orden obligatorio de 9
     pasos. Con ``REAL_TEST_EVALUATION_AUTHORIZED=False`` (el unico
     valor posible hoy) aborta en el paso 1, antes de ``open``, ``stat``
-    de la fuente, pandas/pyarrow, lectura, construccion o escritura."""
+    de la fuente, pandas/pyarrow, lectura, construccion o escritura.
+
+    Los pasos 2-9 se ejecutan bajo ``_normalize_execution_signals``:
+    un SIGTERM/SIGINT en cualquier punto se convierte en
+    ``_ManagedTerminationSignal`` (en vez de matar el proceso sin
+    limpieza), permitiendo que ``publish_final_evaluation_bundle``
+    borre su temporal igual que ante cualquier otro fallo antes de que
+    la senal termine de propagarse."""
     # 1. comprobar la unica puerta.
     if not REAL_TEST_EVALUATION_AUTHORIZED:
         raise SystemExit(REAL_TEST_EVALUATION_BLOCK_REASON)
-    # 2. validar destino del bundle y fuente contractual (sin leerla).
-    validate_bundle_destination(bundle_dir)
-    _validate_source_path_contract(FINAL_SEALED_EVALUATION_SOURCE_PATH)
-    # 3. cargar una sola vez.
-    points = source_reader(FINAL_SEALED_EVALUATION_SOURCE_PATH)
-    # 4. adaptar.
-    adapted = adapt_real_points_dataframe(points)
-    # 5-6. evaluar y agregar (el orquestador hace ambos).
-    outcome = evaluate_final_sealed_test(adapted)
-    # 7-8. serializar y publicar atomicamente (un unico os.replace).
-    published_dir = publish_final_evaluation_bundle(outcome, bundle_dir=bundle_dir)
-    # 9. verificar el bundle publicado.
-    verify_published_bundle(published_dir)
-    return published_dir
+    with _normalize_execution_signals():
+        # 2. validar destino del bundle y fuente contractual (sin leerla).
+        validate_bundle_destination(bundle_dir)
+        _validate_source_path_contract(FINAL_SEALED_EVALUATION_SOURCE_PATH)
+        # 3. cargar una sola vez.
+        points = source_reader(FINAL_SEALED_EVALUATION_SOURCE_PATH)
+        # 4. adaptar.
+        adapted = adapt_real_points_dataframe(points)
+        # 5-6. evaluar y agregar (el orquestador hace ambos).
+        outcome = evaluate_final_sealed_test(adapted)
+        # 7-8. serializar y publicar atomicamente (un unico os.replace).
+        published_dir = publish_final_evaluation_bundle(outcome, bundle_dir=bundle_dir)
+        # 9. verificar el bundle publicado.
+        verify_published_bundle(published_dir)
+        return published_dir
 
 
 # --------------------------------------------------------------------- #
@@ -580,14 +652,28 @@ def execute_real_sealed_test_evaluation(
 def main(argv: list[str] | None = None) -> int:
     """CLI sin ruta alternativa a la fuente, sin --force, sin --retry
     y sin flag de autorizacion: el unico control es la constante del
-    modulo. Con la puerta en False, sale con 1 antes de cualquier I/O."""
+    modulo. Con la puerta en False, sale con 1 antes de cualquier I/O.
+
+    Codigos de salida cerrados: ``0`` completado y verificado; ``1``
+    puerta cerrada o cualquier fallo (fuente, adaptacion, evaluacion,
+    publicacion, verificacion); ``2`` uso invalido (cualquier ``argv``,
+    sin excepcion, ni siquiera comprobado contra la puerta); ``130``
+    interrupcion (SIGINT/``KeyboardInterrupt`` o SIGTERM gestionado via
+    ``_normalize_execution_signals``)."""
     if argv:
         return 2
     if not REAL_TEST_EVALUATION_AUTHORIZED:
         return 1
-    try:  # pragma: no cover - inalcanzable mientras la puerta sea False
+    try:  # pragma: no cover - deliberadamente sin ejercitar en tests:
+        # con la puerta en True este bloque SI es alcanzable, pero
+        # invocarlo sin mockear ``source_reader`` dispara una lectura
+        # real de la fuente contractual (prohibida fuera de una
+        # ejecucion manual autorizada); los tests cubren cada rama de
+        # fallo/interrupcion llamando a ``execute_real_sealed_test_
+        # evaluation`` directamente con un ``source_reader`` sintetico,
+        # nunca a traves de ``main()``.
         execute_real_sealed_test_evaluation()
-    except KeyboardInterrupt:
+    except (_ManagedTerminationSignal, KeyboardInterrupt):
         return 130
     except Exception:
         return 1
@@ -595,7 +681,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main()) from None
+    # Bug corregido en revision P23: llamar a main() sin argumentos
+    # dejaba el rechazo "if argv: return 2" como codigo muerto en
+    # ejecucion real (python -m ...) -- cualquier flag que el usuario
+    # escribiese en la linea de comandos (--force, --retry, una ruta)
+    # se ignoraba en silencio en vez de rechazarse con salida 2.
+    raise SystemExit(main(sys.argv[1:])) from None
 
 
 __all__ = (
