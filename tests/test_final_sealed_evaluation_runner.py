@@ -976,3 +976,292 @@ def test_full_runner_calls_publish_exactly_once(
         source_reader=_synthetic_reader, bundle_dir=bundle_dir
     )
     assert len(calls) == 1
+
+
+# --------------------------------------------------------------------- #
+# I. P24: diagnostico del fallo silencioso -- fases, evento sanitizado, #
+# log vacio explicado. Cubre: por que un fallo interno anterior a P24    #
+# producia exit code 1 con stdout/stderr completamente vacios (ninguna  #
+# rama de ``main()``/``execute_real_sealed_test_evaluation`` escribia   #
+# jamas nada, en exito o en fallo); que la fase en curso (paso 2-9) se   #
+# registra correctamente ANTES de cada paso, sin cambiar el tipo ni el   #
+# mensaje de la excepcion original para quien llama a                    #
+# ``execute_real_sealed_test_evaluation`` directamente; que ``main()``   #
+# emite EXACTAMENTE un evento fijo y sanitizado en stderr con la fase    #
+# correcta ante cualquier fallo interno, sin interpolar texto de la      #
+# excepcion, sin rutas, sin traceback, con flush explicito; que exito y  #
+# CLI invalido no emiten ningun evento; y que SIGINT/SIGTERM (130)       #
+# tampoco lo emiten (no son ambiguos, ya tienen su propio codigo).       #
+# --------------------------------------------------------------------- #
+
+
+def test_only_the_sanitized_emitter_writes_to_stdout_or_stderr() -> None:
+    """Causa demostrada del log vacio (evidencia de codigo, no de
+    ejecucion): antes de P24, NINGUNA rama de este modulo -- exito o
+    fallo, en ``main()`` o en cualquier paso 2-9 -- escribia jamas en
+    stdout/stderr; toda excepcion quedaba silenciosamente convertida en
+    ``return 1``. Este test fija esa ausencia como invariante salvo por
+    las dos unicas lineas que introduce P24 a proposito: el ``write`` y
+    el ``flush`` de ``_emit_sanitized_failure_event`` sobre
+    ``sys.stderr`` (nunca ``sys.stdout``)."""
+    source = Path(runner.__file__).read_text(encoding="utf-8")
+    for forbidden in ("print(", "logging."):
+        assert forbidden not in source
+    write_sites = [
+        line for line in source.splitlines()
+        if "sys.stdout" in line or "sys.stderr" in line
+    ]
+    # Las UNICAS referencias a stdout/stderr en todo el modulo deben
+    # ser las de _emit_sanitized_failure_event (write + flush).
+    assert len(write_sites) == 2
+    assert all("sys.stderr" in line for line in write_sites)
+
+
+@pytest.mark.parametrize(
+    ("failure_setup", "expected_stage"),
+    [
+        ("preconditions", runner.STAGE_PRECONDITIONS),
+        ("source_read", runner.STAGE_SOURCE_READ),
+        ("adaptation", runner.STAGE_ADAPTATION),
+        ("evaluation", runner.STAGE_EVALUATION),
+        ("publication", runner.STAGE_PUBLICATION),
+        ("verification", runner.STAGE_VERIFICATION),
+    ],
+)
+def test_execute_real_evaluation_marks_the_correct_stage_before_each_step(
+    small_cardinalities, tmp_path, monkeypatch, failure_setup, expected_stage
+) -> None:
+    """Un fallo inyectado en cada una de las 6 fases deja
+    ``_execution_stage_var`` exactamente en esa fase, SIN cambiar el
+    tipo de la excepcion original propagada (los tests que llaman a
+    esta funcion directamente, como ``test_full_runner_adapter_failure_
+    leaves_no_bundle``, siguen viendo la misma excepcion de siempre)."""
+    _authorized_runner_env(monkeypatch)
+    bundle_dir = tmp_path / "final_evaluation"
+    source = tmp_path / "synthetic-source.parquet"
+    source.write_bytes(b"synthetic-not-real-parquet")
+    monkeypatch.setattr(runner, "FINAL_SEALED_EVALUATION_SOURCE_PATH", source)
+
+    def _working_reader(_path):
+        return _small_points_dataframe(train=2, validation=2, test=2, first_serve="4")
+
+    reader = _working_reader
+    if failure_setup == "preconditions":
+        bundle_dir.mkdir()  # el destino ya existe -> falla ANTES de leer.
+    elif failure_setup == "source_read":
+        def reader(_path):
+            raise OSError("fallo simulado de lectura")
+    elif failure_setup == "adaptation":
+        def reader(_path):
+            return _small_points_dataframe(train=999, validation=2, test=2)
+    elif failure_setup == "evaluation":
+        monkeypatch.setattr(
+            runner, "evaluate_final_sealed_test",
+            lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("fallo simulado")),
+        )
+    elif failure_setup == "publication":
+        monkeypatch.setattr(
+            runner, "publish_final_evaluation_bundle",
+            lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("fallo simulado")),
+        )
+    elif failure_setup == "verification":
+        monkeypatch.setattr(
+            runner, "verify_published_bundle",
+            lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("fallo simulado")),
+        )
+
+    with pytest.raises(Exception):  # noqa: B017 - tipo exacto ya cubierto en otros tests
+        runner.execute_real_sealed_test_evaluation(source_reader=reader, bundle_dir=bundle_dir)
+    assert runner._execution_stage_var.get() == expected_stage
+    if failure_setup == "preconditions":
+        # El propio test creo el directorio vacio para disparar el
+        # fallo "ya existe"; debe seguir vacio (nunca se llego a
+        # escribir nada en el).
+        assert list(bundle_dir.iterdir()) == []
+    elif failure_setup == "verification":
+        # El bundle SI existe: verification corre DESPUES de un
+        # publish atomico ya completado con exito.
+        assert bundle_dir.exists()
+    else:
+        # preconditions ya cubierto arriba; para el resto
+        # (source_read/adaptation/evaluation/publication) la
+        # publicacion nunca llega a completarse.
+        assert not bundle_dir.exists()
+
+
+def test_execute_real_evaluation_resets_stage_to_none_on_success(
+    small_cardinalities, tmp_path, monkeypatch
+) -> None:
+    _authorized_runner_env(monkeypatch)
+    bundle_dir = tmp_path / "final_evaluation"
+    source = tmp_path / "synthetic-source.parquet"
+    source.write_bytes(b"synthetic-not-real-parquet")
+    monkeypatch.setattr(runner, "FINAL_SEALED_EVALUATION_SOURCE_PATH", source)
+
+    def _synthetic_reader(_path):
+        return _small_points_dataframe(train=2, validation=2, test=2, first_serve="4")
+
+    runner.execute_real_sealed_test_evaluation(
+        source_reader=_synthetic_reader, bundle_dir=bundle_dir
+    )
+    assert runner._execution_stage_var.get() is None
+
+
+@pytest.mark.parametrize("stage", list(runner.EXECUTION_STAGES))
+def test_main_emits_exactly_one_sanitized_event_with_correct_stage(
+    monkeypatch, capsys, stage
+) -> None:
+    """El mensaje es un literal fijo con la fase correcta; NUNCA
+    contiene el texto de la excepcion original (aunque esta incluya
+    datos que parezcan sensibles), ni traceback, ni rutas. stdout
+    permanece vacio."""
+    _authorized_runner_env(monkeypatch)
+
+    def _fake_execute(**_kwargs):
+        runner._execution_stage_var.set(stage)
+        raise RuntimeError(
+            "SECRET_PLAYER_NAME=Jane Doe path=/Users/errandi/private/points.parquet"
+        )
+
+    monkeypatch.setattr(runner, "execute_real_sealed_test_evaluation", _fake_execute)
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == f"final_evaluation_failed stage={stage} exit_code=1\n"
+    assert "SECRET_PLAYER_NAME" not in captured.err
+    assert "Jane Doe" not in captured.err
+    assert "/Users/" not in captured.err
+    assert "points.parquet" not in captured.err
+    assert "Traceback" not in captured.err
+    assert "RuntimeError" not in captured.err
+
+
+def test_main_emits_unknown_stage_when_no_stage_was_recorded(monkeypatch, capsys) -> None:
+    """Defensa en profundidad: si por alguna razon la fase nunca se
+    marco (deberia ser inalcanzable, cada paso 2-9 se marca a si
+    mismo), el evento reporta ``unknown`` en vez de fallar o filtrar
+    ``None``/texto arbitrario."""
+    _authorized_runner_env(monkeypatch)
+    runner._execution_stage_var.set(None)
+
+    def _fake_execute(**_kwargs):
+        raise RuntimeError("fallo simulado sin fase registrada")
+
+    monkeypatch.setattr(runner, "execute_real_sealed_test_evaluation", _fake_execute)
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == "final_evaluation_failed stage=unknown exit_code=1\n"
+
+
+def test_main_emits_unknown_stage_for_a_value_outside_the_closed_catalog(
+    monkeypatch, capsys
+) -> None:
+    """Defensa en profundidad adicional: un valor de fase fuera del
+    catalogo cerrado (que no deberia poder ocurrir en produccion) NUNCA
+    se interpola tal cual en el mensaje -- se normaliza a ``unknown``."""
+    _authorized_runner_env(monkeypatch)
+
+    def _fake_execute(**_kwargs):
+        runner._execution_stage_var.set("attacker_controlled_stage_name")
+        raise RuntimeError("fallo simulado")
+
+    monkeypatch.setattr(runner, "execute_real_sealed_test_evaluation", _fake_execute)
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.err == "final_evaluation_failed stage=unknown exit_code=1\n"
+    assert "attacker_controlled_stage_name" not in captured.err
+
+
+def test_main_synthetic_success_emits_no_event(monkeypatch, capsys, tmp_path) -> None:
+    _authorized_runner_env(monkeypatch)
+    fake_bundle = tmp_path / "final_evaluation"
+
+    monkeypatch.setattr(
+        runner, "execute_real_sealed_test_evaluation", lambda **_kwargs: fake_bundle
+    )
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_main_invalid_argv_emits_no_event(capsys) -> None:
+    captured_before = capsys.readouterr()
+    assert captured_before.err == ""
+    for bad_args in (["--force"], ["--retry"], ["some-positional-path"]):
+        exit_code = runner.main(bad_args)
+        captured = capsys.readouterr()
+        assert exit_code == 2
+        assert captured.out == ""
+        assert captured.err == ""
+
+
+def test_main_closed_gate_emits_no_event(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(runner, "REAL_TEST_EVALUATION_AUTHORIZED", False)
+    exit_code = runner.main([])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_main_keyboard_interrupt_emits_no_sanitized_event(monkeypatch, capsys) -> None:
+    _authorized_runner_env(monkeypatch)
+    monkeypatch.setattr(
+        runner,
+        "execute_real_sealed_test_evaluation",
+        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_main_managed_termination_signal_emits_no_sanitized_event(monkeypatch, capsys) -> None:
+    _authorized_runner_env(monkeypatch)
+    monkeypatch.setattr(
+        runner,
+        "execute_real_sealed_test_evaluation",
+        lambda **_kwargs: (_ for _ in ()).throw(runner._ManagedTerminationSignal()),
+    )
+    exit_code = runner.main()
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_execution_stages_catalog_is_closed_and_ordered() -> None:
+    assert runner.EXECUTION_STAGES == (
+        runner.STAGE_PRECONDITIONS,
+        runner.STAGE_SOURCE_READ,
+        runner.STAGE_ADAPTATION,
+        runner.STAGE_EVALUATION,
+        runner.STAGE_PUBLICATION,
+        runner.STAGE_VERIFICATION,
+    )
+    assert len(set(runner.EXECUTION_STAGES)) == len(runner.EXECUTION_STAGES)
+
+
+def test_p24_does_not_touch_authorization_gate_or_counters() -> None:
+    """Esta tarea no ejecuta el test real ni cambia la autorizacion: la
+    puerta sigue False y los contadores siguen 1/0/0/0 (cierre P23)."""
+    import src.analysis.final_sealed_evaluation as p20
+
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is False
+    assert p20.PREVIOUS_REAL_TEST_EVALUATIONS == 1
+    assert p20.COMPLETED_REAL_TEST_EVALUATIONS == 0
+    assert p20.INTERRUPTED_REAL_TEST_EVALUATIONS == 0
+    assert p20.AUTOMATIC_RETRIES_PERFORMED == 0
+    assert p20.AUTOMATIC_RETRY is False

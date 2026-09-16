@@ -38,6 +38,7 @@ publicaciones de archivo por archivo.
 
 from __future__ import annotations
 
+import contextvars
 import csv
 import io
 import json
@@ -181,6 +182,83 @@ def _normalize_execution_signals() -> Iterator[None]:
     finally:
         for managed_signal, original in originals.items():
             signal.signal(managed_signal, original)
+
+
+# --------------------------------------------------------------------- #
+# Observabilidad sanitizada ante fallo (P24): diagnostico de la          #
+# evaluacion real fallida en P23, que termino con exit code 1 y log      #
+# vacio porque NINGUNA rama de este modulo (exito o fallo) escribia      #
+# jamas nada en stdout/stderr -- toda excepcion quedaba silenciosamente  #
+# convertida en ``return 1`` dentro de ``main()``. Este bloque anade UN  #
+# UNICO evento fijo y sanitizado en stderr ante fallo, identificando la  #
+# fase de los 9 pasos donde ocurrio (nunca el tipo/mensaje real de la    #
+# excepcion, nunca una ruta, nunca un traceback). No cambia el tipo ni   #
+# el mensaje de ninguna excepcion propagada por                          #
+# ``execute_real_sealed_test_evaluation`` a sus llamantes directos       #
+# (los tests que la invocan sin pasar por ``main()`` siguen viendo       #
+# exactamente la misma excepcion que hoy): el seguimiento de fase usa    #
+# una ``contextvars.ContextVar`` de solo lectura desde ``main()``, nunca #
+# un envoltorio de la excepcion.                                         #
+#                                                                         #
+# El modelo de fases se ajusta a las FRONTERAS REALES del codigo, sin    #
+# fragmentar artificialmente funciones que ya combinan varios de los 9   #
+# pasos de forma deliberada: paso 2 (destino+fuente, sin leerla) ->      #
+# ``preconditions``; paso 3 (unica lectura) -> ``source_read``; paso 4   #
+# -> ``adaptation``; pasos 5-6 (evaluar Y agregar, una sola llamada del  #
+# orquestador) -> ``evaluation``; pasos 7-8 (serializar Y publicar de    #
+# forma atomica, una sola funcion) -> ``publication``; paso 9 ->         #
+# ``verification``. La puerta (paso 1) queda FUERA de este catalogo:     #
+# "puerta cerrada" no es un fallo interno ambiguo que diagnosticar, es   #
+# el estado documentado y ya legible directamente desde la constante.    #
+# --------------------------------------------------------------------- #
+
+STAGE_PRECONDITIONS: Final = "preconditions"
+STAGE_SOURCE_READ: Final = "source_read"
+STAGE_ADAPTATION: Final = "adaptation"
+STAGE_EVALUATION: Final = "evaluation"
+STAGE_PUBLICATION: Final = "publication"
+STAGE_VERIFICATION: Final = "verification"
+
+# Catalogo CERRADO y ordenado de fases (en el orden real de ejecucion).
+EXECUTION_STAGES: Final = (
+    STAGE_PRECONDITIONS,
+    STAGE_SOURCE_READ,
+    STAGE_ADAPTATION,
+    STAGE_EVALUATION,
+    STAGE_PUBLICATION,
+    STAGE_VERIFICATION,
+)
+
+# Centinela para cualquier fallo que -- por diseno -- no deberia poder
+# alcanzar esta rama (cada paso 2-9 marca su propia fase antes de
+# ejecutarse), y para cualquier valor fuera del catalogo cerrado.
+_STAGE_UNKNOWN: Final = "unknown"
+
+# Fase en curso de la UNICA ejecucion real activa en este proceso, solo
+# para diagnostico sanitizado ante fallo. ``ContextVar`` (no una simple
+# variable de modulo) para que cada contexto/hilo de prueba tenga su
+# propio valor aislado, sin contaminacion cruzada entre tests. Se
+# reinicia a ``None`` al inicio de cada llamada a
+# ``execute_real_sealed_test_evaluation`` y tras un exito.
+_execution_stage_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_final_sealed_evaluation_execution_stage", default=None
+)
+
+
+def _emit_sanitized_failure_event(stage: str | None) -> None:
+    """Emite EXACTAMENTE un evento fijo en stderr ante un fallo interno
+    de la frontera real: ``final_evaluation_failed stage=<fase>
+    exit_code=1``. Nunca interpola ``str(exc)``/``repr(exc)``, rutas,
+    HOME/usuario, identidades ni datos target-level -- el UNICO valor
+    variable es ``stage``, y se valida contra el catalogo cerrado
+    ``EXECUTION_STAGES`` (cualquier otro valor, incluido ``None``, se
+    reporta como ``unknown``) para que ni siquiera un valor inesperado
+    en la ``ContextVar`` pueda filtrar texto arbitrario. Flush explicito
+    para que el evento quede en disco/terminal antes de que el proceso
+    termine, incluso si stderr no es interactivo."""
+    safe_stage = stage if stage in EXECUTION_STAGES else _STAGE_UNKNOWN
+    sys.stderr.write(f"final_evaluation_failed stage={safe_stage} exit_code=1\n")
+    sys.stderr.flush()
 
 
 # --------------------------------------------------------------------- #
@@ -638,24 +716,40 @@ def execute_real_sealed_test_evaluation(
     ``_ManagedTerminationSignal`` (en vez de matar el proceso sin
     limpieza), permitiendo que ``publish_final_evaluation_bundle``
     borre su temporal igual que ante cualquier otro fallo antes de que
-    la senal termine de propagarse."""
+    la senal termine de propagarse.
+
+    Diagnostico sanitizado (P24): antes de ejecutar cada paso 2-9 se
+    marca la fase en curso en ``_execution_stage_var`` (ver
+    ``EXECUTION_STAGES``), UNICAMENTE para que ``main()`` pueda emitir
+    un evento sanitizado si algo falla. Esto NO cambia el tipo ni el
+    mensaje de ninguna excepcion: quien llame a esta funcion
+    directamente (como ya hacen los tests) sigue viendo exactamente la
+    misma excepcion que antes."""
     # 1. comprobar la unica puerta.
     if not REAL_TEST_EVALUATION_AUTHORIZED:
         raise SystemExit(REAL_TEST_EVALUATION_BLOCK_REASON)
+    _execution_stage_var.set(None)
     with _normalize_execution_signals():
         # 2. validar destino del bundle y fuente contractual (sin leerla).
+        _execution_stage_var.set(STAGE_PRECONDITIONS)
         validate_bundle_destination(bundle_dir)
         _validate_source_path_contract(FINAL_SEALED_EVALUATION_SOURCE_PATH)
         # 3. cargar una sola vez.
+        _execution_stage_var.set(STAGE_SOURCE_READ)
         points = source_reader(FINAL_SEALED_EVALUATION_SOURCE_PATH)
         # 4. adaptar.
+        _execution_stage_var.set(STAGE_ADAPTATION)
         adapted = adapt_real_points_dataframe(points)
         # 5-6. evaluar y agregar (el orquestador hace ambos).
+        _execution_stage_var.set(STAGE_EVALUATION)
         outcome = evaluate_final_sealed_test(adapted)
         # 7-8. serializar y publicar atomicamente (un unico os.replace).
+        _execution_stage_var.set(STAGE_PUBLICATION)
         published_dir = publish_final_evaluation_bundle(outcome, bundle_dir=bundle_dir)
         # 9. verificar el bundle publicado.
+        _execution_stage_var.set(STAGE_VERIFICATION)
         verify_published_bundle(published_dir)
+        _execution_stage_var.set(None)
         return published_dir
 
 
@@ -669,14 +763,26 @@ def execute_real_sealed_test_evaluation(
 def main(argv: list[str] | None = None) -> int:
     """CLI sin ruta alternativa a la fuente, sin --force, sin --retry
     y sin flag de autorizacion: el unico control es la constante del
-    modulo. Con la puerta en False, sale con 1 antes de cualquier I/O.
+    modulo. Con la puerta en False, sale con 1 antes de cualquier I/O
+    y SIN emitir ningun evento (el bloqueo por puerta cerrada no es un
+    fallo interno ambiguo: ya es legible directamente desde la
+    constante, nada que diagnosticar).
+
+    Ante un fallo interno real (paso 2-9 de
+    ``execute_real_sealed_test_evaluation``), emite en stderr EXACTAMENTE
+    un evento sanitizado (``_emit_sanitized_failure_event``) con la fase
+    exacta donde ocurrio, antes de devolver ``1`` -- nunca el mensaje/
+    tipo de la excepcion original, nunca una ruta, nunca un traceback.
+    stdout permanece siempre vacio (ninguna rama de esta funcion escribe
+    ahi). Una interrupcion (``130``) NO emite ese evento: ya es
+    distinguible sin ambiguedad por su propio codigo de salida.
 
     Codigos de salida cerrados: ``0`` completado y verificado; ``1``
-    puerta cerrada o cualquier fallo (fuente, adaptacion, evaluacion,
-    publicacion, verificacion); ``2`` uso invalido (cualquier ``argv``,
-    sin excepcion, ni siquiera comprobado contra la puerta); ``130``
+    puerta cerrada (sin evento) o fallo interno en paso 2-9 (con
+    evento sanitizado); ``2`` uso invalido (cualquier ``argv``, sin
+    excepcion, ni siquiera comprobado contra la puerta); ``130``
     interrupcion (SIGINT/``KeyboardInterrupt`` o SIGTERM gestionado via
-    ``_normalize_execution_signals``)."""
+    ``_normalize_execution_signals``, sin evento)."""
     if argv:
         return 2
     if not REAL_TEST_EVALUATION_AUTHORIZED:
@@ -688,11 +794,13 @@ def main(argv: list[str] | None = None) -> int:
         # ejecucion manual autorizada); los tests cubren cada rama de
         # fallo/interrupcion llamando a ``execute_real_sealed_test_
         # evaluation`` directamente con un ``source_reader`` sintetico,
-        # nunca a traves de ``main()``.
+        # o sustituyendo la funcion completa al probar ``main()``,
+        # nunca dejando que ``main()`` invoque el lector real.
         execute_real_sealed_test_evaluation()
     except (_ManagedTerminationSignal, KeyboardInterrupt):
         return 130
     except Exception:
+        _emit_sanitized_failure_event(_execution_stage_var.get())
         return 1
     return 0
 
@@ -713,10 +821,17 @@ __all__ = (
     "BUNDLE_RELATIVE_PATHS",
     "BUNDLE_SECONDARY_METRICS_RELATIVE_PATH",
     "BUNDLE_SUMMARY_RELATIVE_PATH",
+    "EXECUTION_STAGES",
     "FINAL_EVALUATION_BUNDLE_DIR",
     "FINAL_SEALED_EVALUATION_RUNNER_CONTRACT_VERSION",
     "FINAL_SEALED_EVALUATION_SOURCE_PATH",
     "MAX_ARTIFACT_BYTES",
+    "STAGE_ADAPTATION",
+    "STAGE_EVALUATION",
+    "STAGE_PRECONDITIONS",
+    "STAGE_PUBLICATION",
+    "STAGE_SOURCE_READ",
+    "STAGE_VERIFICATION",
     "FinalSealedEvaluationRunnerError",
     "build_final_evaluation_bundle_payloads",
     "build_final_evaluation_coverage_rows",
