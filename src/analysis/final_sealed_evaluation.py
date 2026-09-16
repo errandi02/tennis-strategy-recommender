@@ -527,16 +527,23 @@ REAL_TEST_EVALUATION_BLOCK_REASON: Final = (
 
 
 def run_real_test_evaluation(*_args: object, **_kwargs: object) -> None:
-    """Frontera bloqueada: aborta ANTES de cualquier I/O si no autorizado.
+    """Frontera controlada por la puerta unica: aborta ANTES de
+    cualquier I/O unicamente cuando ``REAL_TEST_EVALUATION_AUTHORIZED``
+    vale ``False``.
 
     Firma deliberadamente generica (``*_args``/``**_kwargs``): no
-    acepta ninguna ruta real ni configuracion externa. Con
-    ``REAL_TEST_EVALUATION_AUTHORIZED=False`` esta funcion SIEMPRE
-    aborta antes de tocar ``os.environ``, Parquet, CSV, el snapshot
-    privado o cualquier lector real. Tras P23, la constante puede
-    valer ``True`` para una unica ejecucion manual autorizada (ver
-    regla de cierre junto a la constante); no hay ninguna otra via de
-    ejecucion en ningun caso.
+    acepta ninguna ruta real ni configuracion externa. Estado VIGENTE
+    tras P23: ``REAL_TEST_EVALUATION_AUTHORIZED = True`` (una unica
+    ejecucion manual autorizada, razon
+    ``REAL_TEST_EVALUATION_AUTHORIZATION_REASON``; ver regla de cierre
+    junto a la constante, que la devolvera a ``False`` en un commit
+    posterior tras completar, fallar o interrumpir esa ejecucion). En
+    ese estado esta funcion SI delega a la frontera productiva real
+    (import local, ver abajo). Cuando la constante vuelva a valer
+    ``False``, esta funcion abortara de nuevo antes de tocar
+    ``os.environ``, Parquet, CSV, el snapshot privado o cualquier
+    lector real; no hay ninguna otra via de ejecucion en ningun caso
+    (ni variable de entorno, ni flag, ni segunda constante).
 
     P22 (``src.analysis.final_sealed_evaluation_runner``) completo la
     frontera productiva real: el ``import`` es local (dentro de esta

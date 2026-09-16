@@ -176,6 +176,61 @@ def test_ast_p20_has_exactly_one_authorization_assignment() -> None:
     assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
 
 
+# Frases contractuales obsoletas (correccion post-commit-P23): cualquier
+# afirmacion de que el valor VIGENTE es False, o de que una funcion
+# SIEMPRE aborta por la puerta, sin condicionarlo, deja de ser cierta en
+# cuanto la puerta pasa a True. Denylist literal de las frases exactas
+# detectadas y corregidas.
+_STALE_GATE_CLAIM_PHRASES: tuple[str, ...] = (
+    "el unico valor posible hoy",
+    "esta funcion SIEMPRE aborta",
+    "SIEMPRE aborta antes de tocar",
+)
+
+# Marcadores de referencias LEGITIMAS a la futura regla de cierre (que
+# devolvera la puerta a False tras completar/fallar/interrumpir la
+# unica ejecucion autorizada): deben seguir presentes, para confirmar
+# que la correccion de lo obsoleto no borro contrato valido.
+_LEGITIMATE_CLOSURE_RULE_MARKERS: tuple[str, ...] = (
+    "regla de cierre",
+    "commit posterior",
+)
+
+
+def test_no_stale_current_state_false_claims_while_gate_is_true() -> None:
+    """P23-correccion: mientras ``REAL_TEST_EVALUATION_AUTHORIZED``
+    (AST, unica asignacion) sea ``True``, ningun docstring/comentario
+    contractual de P20/P22 puede afirmar -- sin condicionarlo -- que el
+    valor actual es ``False`` o que una funcion SIEMPRE aborta por esa
+    puerta (los dos hallazgos exactos detectados tras el commit P23).
+    Las referencias legitimas a la FUTURA regla de cierre se preservan
+    y se comprueban aparte, para no permitir que la correccion de lo
+    obsoleto borre contrato valido junto con el texto erroneo."""
+    import src.analysis.final_sealed_evaluation as p20
+
+    assert p20.REAL_TEST_EVALUATION_AUTHORIZED is True
+
+    p20_source = Path(p20.__file__).read_text(encoding="utf-8")
+    runner_source = Path(runner.__file__).read_text(encoding="utf-8")
+
+    for module_name, source in (("final_sealed_evaluation.py", p20_source),
+                                 ("final_sealed_evaluation_runner.py", runner_source)):
+        for phrase in _STALE_GATE_CLAIM_PHRASES:
+            assert phrase not in source, (
+                f"{module_name}: frase contractual obsoleta detectada: {phrase!r} "
+                "(afirma el estado False mientras la puerta vigente es True)."
+            )
+
+    assert any(marker in p20_source for marker in _LEGITIMATE_CLOSURE_RULE_MARKERS), (
+        "final_sealed_evaluation.py perdio la referencia legitima a la "
+        "regla de cierre futura."
+    )
+    assert any(marker in runner_source for marker in _LEGITIMATE_CLOSURE_RULE_MARKERS), (
+        "final_sealed_evaluation_runner.py perdio la referencia legitima "
+        "a la regla de cierre futura."
+    )
+
+
 # --------------------------------------------------------------------- #
 # B. Puerta False antes de cualquier I/O                                 #
 # --------------------------------------------------------------------- #

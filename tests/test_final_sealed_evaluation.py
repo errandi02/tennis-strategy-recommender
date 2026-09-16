@@ -4,8 +4,11 @@ abre el snapshot privado ni ejecuta P10 real: todo dato es sintetico o
 proviene exclusivamente de constantes/contratos ya publicados.
 
 Verifican: configuracion exacta frozen, dataclass inmutable, huella
-independiente, puerta de autorizacion unica en False, bloqueo antes de
-cualquier I/O, cero reintentos, temporalidad exacta (cruzada contra
+independiente, puerta de autorizacion unica (estado vigente tras P23:
+``True``, una unica ejecucion manual autorizada, con razon exacta y
+contadores en cero; el camino "puerta cerrada" se ejercita parcheando
+explicitamente a False), bloqueo antes de cualquier I/O, cero
+reintentos, temporalidad exacta (cruzada contra
 ``chronological_validation.py`` como autoridad independiente),
 denominadores de metricas (abstenciones, partially_available, labels
 ausentes, empates, errores upstream, 2026 parcial), alcance de

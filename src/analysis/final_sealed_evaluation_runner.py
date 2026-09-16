@@ -614,9 +614,14 @@ def execute_real_sealed_test_evaluation(
     bundle_dir: Path = FINAL_EVALUATION_BUNDLE_DIR,
 ) -> Path:
     """Unica frontera productiva real, en el orden obligatorio de 9
-    pasos. Con ``REAL_TEST_EVALUATION_AUTHORIZED=False`` (el unico
-    valor posible hoy) aborta en el paso 1, antes de ``open``, ``stat``
-    de la fuente, pandas/pyarrow, lectura, construccion o escritura.
+    pasos. Aborta en el paso 1 -- antes de ``open``, ``stat`` de la
+    fuente, pandas/pyarrow, lectura, construccion o escritura --
+    unicamente cuando ``REAL_TEST_EVALUATION_AUTHORIZED`` vale
+    ``False``. Estado VIGENTE tras P23: ``True`` (una unica ejecucion
+    manual autorizada; ver ``final_sealed_evaluation.py`` para la razon
+    exacta y la regla de cierre que la devolvera a ``False`` en un
+    commit posterior tras completar, fallar o interrumpir esa
+    ejecucion).
 
     Los pasos 2-9 se ejecutan bajo ``_normalize_execution_signals``:
     un SIGTERM/SIGINT en cualquier punto se convierte en
@@ -645,7 +650,9 @@ def execute_real_sealed_test_evaluation(
 
 
 # --------------------------------------------------------------------- #
-# CLI bloqueado (no se ejecuta durante P22)                              #
+# CLI controlado por la unica puerta del modulo (estado vigente en       #
+# final_sealed_evaluation.py; ver docstring de main() para los codigos   #
+# de salida exactos en cada caso)                                        #
 # --------------------------------------------------------------------- #
 
 
