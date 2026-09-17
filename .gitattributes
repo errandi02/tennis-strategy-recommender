@@ -1,0 +1,6 @@
+# P27: scripts/run_demo.sh debe conservar terminadores de linea LF
+# incluso en un checkout de Windows con core.autocrlf=true (una CRLF
+# incrustada rompe la ejecucion real en macOS/Linux, ej. "fi\r" o
+# variables con un \r final). Se fija explicitamente para *.sh en todo
+# el repositorio, no solo para este archivo.
+*.sh text eol=lf

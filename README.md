@@ -6,6 +6,142 @@ TFM de Omar Errandi para construir un recomendador explicable de estrategias de 
 
 Proyecto en fase de inicialización.
 
+## Demostración reproducible (P27)
+
+Cualquier persona que clone el repositorio **sin acceso a ningún dato
+privado** puede instalar dependencias, arrancar la API y la interfaz, y
+navegar recomendaciones reales de ejemplo. La demostración usa
+EXCLUSIVAMENTE una snapshot pública, pequeña y determinista —
+[`demo/tactical-recommendations-demo-v1.json`](demo/tactical-recommendations-demo-v1.json)
+— construida con jugadores de fantasía (`Ana Ibarra`, `Marco Rossi`,
+`Priya Verma`) y fechas ficticias (2031): nunca la snapshot privada
+real, nunca `points_enriched.parquet`, nunca el test sellado
+2024-2026.
+
+### Inicio rápido
+
+```bash
+git clone <url-del-repo> tennis-strategy-recommender
+cd tennis-strategy-recommender
+pip install -r requirements.txt
+```
+
+macOS/Linux:
+
+```bash
+./scripts/run_demo.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+.\scripts\run_demo.ps1
+```
+
+Ambos scripts generan la snapshot demo si aún no existe, arrancan la
+API en `http://127.0.0.1:8000`, esperan a que responda `/healthz`, y
+abren la interfaz Streamlit en `http://localhost:8501`. `Ctrl+C`
+detiene ambos procesos de forma ordenada. Ningún script depende de un
+nombre de usuario, `HOME` fijo ni ruta absoluta: todas las rutas se
+resuelven desde la ubicación del propio script.
+
+### Ejecución manual (paso a paso)
+
+P17 exige, por contrato de seguridad ya existente (que esta
+demostración no modifica), que la ruta de la snapshot viva **fuera**
+del repositorio (`src/api/runtime.py::_reject_route_inside_repository`).
+Por eso el paso manual copia el archivo demo versionado a una ruta
+temporal antes de arrancar la API — nunca se apunta directamente a
+`demo/tactical-recommendations-demo-v1.json`:
+
+```bash
+python scripts/generate_demo_snapshot.py   # crea demo/tactical-recommendations-demo-v1.json
+
+# Terminal 1 (API P17): copia fuera del repo y arranca sobre esa copia
+DEMO_COPY="$(mktemp -d)/tactical-recommendations-demo-v1.json"
+cp demo/tactical-recommendations-demo-v1.json "$DEMO_COPY"
+export TENNIS_TACTICAL_SNAPSHOT_PATH="$DEMO_COPY"
+python -m src.api.runtime --host 127.0.0.1 --port 8000
+
+# Terminal 2 (UI P18, una vez /healthz responde)
+streamlit run src/ui/streamlit_app.py --browser.gatherUsageStats false
+```
+
+En PowerShell:
+
+```powershell
+python scripts\generate_demo_snapshot.py
+$DemoCopyDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
+New-Item -ItemType Directory -Path $DemoCopyDir -Force | Out-Null
+$DemoCopy = Join-Path $DemoCopyDir "tactical-recommendations-demo-v1.json"
+Copy-Item demo\tactical-recommendations-demo-v1.json $DemoCopy
+$env:TENNIS_TACTICAL_SNAPSHOT_PATH = $DemoCopy
+python -m src.api.runtime --host 127.0.0.1 --port 8000
+```
+
+(`scripts/run_demo.sh`/`run_demo.ps1` ya hacen esta copia automáticamente
+y la borran al terminar — la ejecución manual es solo para quien
+prefiera controlar cada paso.)
+
+### Ejecución con Docker Compose
+
+La demostración reutiliza el mismo `docker-compose.yml` de P19 sin
+ningún cambio: solo se apunta `TENNIS_TACTICAL_SNAPSHOT_HOST_PATH` (en
+`.env`, no versionado) a la snapshot demo en vez de a una privada.
+
+POSIX (macOS/Linux):
+
+```bash
+python scripts/generate_demo_snapshot.py
+echo "TENNIS_TACTICAL_SNAPSHOT_HOST_PATH=$(pwd)/demo/tactical-recommendations-demo-v1.json" > .env
+docker compose up -d --build
+```
+
+PowerShell (Windows):
+
+```powershell
+python scripts\generate_demo_snapshot.py
+"TENNIS_TACTICAL_SNAPSHOT_HOST_PATH=$(Get-Location)\demo\tactical-recommendations-demo-v1.json" | Out-File -Encoding utf8 .env
+docker compose up -d --build
+```
+
+Acceso en `http://127.0.0.1:8501` una vez `api` esté `healthy`. Para
+volver a apuntar a la snapshot privada real, basta reescribir `.env`
+con la ruta real y relanzar `docker compose up -d --build`.
+
+### Regenerar la snapshot demo
+
+[`scripts/generate_demo_snapshot.py`](scripts/generate_demo_snapshot.py)
+reconstruye
+[`demo/tactical-recommendations-demo-v1.json`](demo/tactical-recommendations-demo-v1.json)
+íntegramente en memoria (intentos sintéticos → extracción de señales →
+evidencia de enfrentamiento → priorización → snapshot P13), reutilizando
+la misma tubería de producción que P10-P13. Determinista: dos
+ejecuciones producen bytes idénticos
+(`tests/test_generate_demo_snapshot.py` lo verifica). Contiene 3
+jugadores, varios rivales y fechas por jugador, los cuatro patrones
+P02/P04/P05/P06, recomendaciones disponibles y al menos una abstención
+real por evidencia insuficiente (nunca ausencia total de datos) — cero
+rutas, identidades de partido/punto o secuencias privadas.
+
+### Demo vs. snapshot completa vs. evaluación independiente
+
+- **Snapshot demo** (esta sección): pública, sintética, versionada en
+  el repo, generada por un script determinista. Sirve solo para probar
+  la experiencia de producto sin datos reales.
+- **Snapshot completa P13** (P14-P16, fuera del alcance de este
+  script): se genera **offline**, una sola vez, a partir de resultados
+  P10 reales sobre el snapshot privado (`points_enriched.parquet`).
+  Nunca se versiona en git, nunca se copia a una imagen Docker; solo
+  vive en el host del operador y se monta por bind read-only (ver
+  sección P19 y `.env.example`).
+- **Evaluación independiente del test sellado 2024-2026** (P20-P24):
+  un proceso completamente distinto, sin relación con la demo ni con
+  la snapshot completa P13, gobernado por su propia puerta de
+  autorización cerrada (`REAL_TEST_EVALUATION_AUTHORIZED`, ver sección
+  siguiente). La demostración P27 nunca lee ese conjunto, nunca ejecuta
+  el evaluador sellado y nunca modifica esa autorización.
+
 ## API local (P17)
 
 Arranque local productivo de la API P12 sobre el snapshot privado P13
@@ -129,7 +265,10 @@ permanece siempre visible.
 ## Contenedores reproducibles (P19)
 
 Contenerización de la API P17 y la UI Streamlit P18 con Docker Compose.
-Dos servicios independientes en una red interna dedicada:
+Dos servicios independientes en una red interna dedicada. Para probar
+esta misma infraestructura sin ningún dato privado, ver «Demostración
+reproducible (P27)» arriba: solo cambia la ruta que apunta
+`TENNIS_TACTICAL_SNAPSHOT_HOST_PATH` en `.env`.
 
 - **`api`**: FastAPI P12 sobre el snapshot P13, cargado una sola vez al
   arrancar. Nunca publica un puerto al host (`expose: 8000` únicamente);
