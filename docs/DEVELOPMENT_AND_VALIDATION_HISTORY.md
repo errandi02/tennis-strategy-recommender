@@ -12,9 +12,6 @@
 
 TFM de Omar Errandi para construir un recomendador explicable de estrategias de tenis a partir de datos profesionales a nivel de punto.
 
-## Estado
-
-Proyecto en fase de inicialización.
 
 ## Demostración reproducible (P27)
 
