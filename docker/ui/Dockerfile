@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HOME=/tmp \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
-    STREAMLIT_SERVER_HEADLESS=true
+    STREAMLIT_SERVER_HEADLESS=true \
+    PYTHONPATH=/app
 
 # Usuario no-root con UID/GID explicitos; sin shell de login.
 RUN groupadd --gid 10002 tennisui \
@@ -32,6 +33,22 @@ COPY src/analysis/return_direction_feasibility.py ./src/analysis/return_directio
 COPY src/analysis/return_profile_feasibility.py ./src/analysis/return_profile_feasibility.py
 COPY src/analysis/return_shot_type_feasibility.py ./src/analysis/return_shot_type_feasibility.py
 COPY src/parsing ./src/parsing
+
+# Comprobacion de importacion previa al arranque: falla el build (no
+# solo el arranque del contenedor) si `from src.ui.streamlit_app import
+# run_recommendation_experience` no resuelve dentro de la imagen. El
+# ''  inicial de sys.path (CWD implicito de `python -c`) se retira
+# antes de importar porque `streamlit run` -- a diferencia de `python
+# -c`/`python -m` -- NUNCA anade el CWD a sys.path (solo PYTHONPATH y
+# el directorio del propio script, ver streamlit/web/bootstrap.py):
+# sin retirarlo, esta comprobacion pasaria incluso sin PYTHONPATH=/app
+# y no habria detectado el ModuleNotFoundError real reportado en
+# produccion.
+RUN python -c "\
+import sys; \
+sys.path = [entry for entry in sys.path if entry != '']; \
+from src.ui.streamlit_app import run_recommendation_experience; \
+print('UI_IMPORT_OK: run_recommendation_experience resuelto sin CWD en sys.path')"
 
 USER 10002:10002
 

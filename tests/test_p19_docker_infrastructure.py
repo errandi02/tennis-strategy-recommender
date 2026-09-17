@@ -269,6 +269,38 @@ def test_dockerfile_no_copia_snapshot_ni_datos(dockerfile_path) -> None:
             assert token not in line, f"{dockerfile_path}: {line!r} referencia {token}"
 
 
+def test_dockerfile_ui_declara_pythonpath_app() -> None:
+    """Regresion del ModuleNotFoundError reportado en produccion:
+    ``streamlit run <script>`` inserta el directorio del propio script
+    en ``sys.path`` (igual que ``python script.py``), NUNCA el CWD/
+    WORKDIR -- a diferencia de ``python -c``/``python -m``, que si
+    tienen el CWD implicito. Sin ``PYTHONPATH=/app`` explicito, ``/app``
+    (padre de ``src/``) no esta en ``sys.path`` y
+    ``from src.ui.streamlit_app import ...`` falla dentro del
+    contenedor aunque WORKDIR sea ``/app``."""
+    content = (_ROOT / "docker/ui/Dockerfile").read_text(encoding="utf-8")
+    assert re.search(r"^\s*PYTHONPATH=/app\s*$", content, re.MULTILINE)
+
+
+def test_dockerfile_ui_declara_comprobacion_de_importacion_previa() -> None:
+    """El build falla (no solo el arranque del contenedor) si el import
+    real que hace ``streamlit_container_app.py`` no resuelve dentro de
+    la imagen."""
+    content = (_ROOT / "docker/ui/Dockerfile").read_text(encoding="utf-8")
+    assert "from src.ui.streamlit_app import run_recommendation_experience" in content
+
+
+def test_dockerfile_ui_import_check_no_depende_del_cwd_implicito_de_python_c() -> None:
+    """``python -c`` (a diferencia de ``streamlit run``) SI anade el CWD
+    a ``sys.path``: sin retirarlo explicitamente, la comprobacion de
+    importacion pasaria incluso sin ``PYTHONPATH=/app`` y no habria
+    detectado el defecto real reportado en produccion (verificado
+    manualmente: la misma comprobacion sin este filtro pasa incluso
+    contra una imagen sin PYTHONPATH)."""
+    content = (_ROOT / "docker/ui/Dockerfile").read_text(encoding="utf-8")
+    assert "sys.path = [entry for entry in sys.path if entry != '']" in content
+
+
 def test_dockerfile_api_declara_healthcheck() -> None:
     content = (_ROOT / "docker/api/Dockerfile").read_text(encoding="utf-8")
     assert "HEALTHCHECK" in content

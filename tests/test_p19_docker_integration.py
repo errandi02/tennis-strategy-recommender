@@ -177,6 +177,31 @@ def test_p19_docker_compose_end_to_end(compose_project) -> None:
     ui_status = _wait_for_ui()
     assert ui_status == 200
 
+    # 4b. Regresion del ModuleNotFoundError reportado en produccion: un
+    # HTTP 200 del servidor Streamlit certifica solo que el proceso
+    # escucha, NUNCA que el script de la aplicacion importe/ejecute sin
+    # error (Streamlit lo ejecuta de forma perezosa, por sesion de
+    # navegador -- ver tests/test_ui_docker_import_regression.py). Se
+    # reproduce aqui, contra el contenedor ui REAL ya en ejecucion (no
+    # una imagen aislada), la misma semantica de sys.path que usa
+    # ``streamlit run``.
+    import_check_script = (
+        "import sys\n"
+        "sys.path = [entry for entry in sys.path if entry != '']\n"
+        "from src.ui.streamlit_app import run_recommendation_experience\n"
+        "print('UI_IMPORT_OK')\n"
+    )
+    import_check = _run(
+        [
+            "docker", "compose", "-p", project, "exec", "-T", "ui",
+            "python", "-c", import_check_script,
+        ],
+        env=env,
+        timeout=20,
+    )
+    assert import_check.returncode == 0, import_check.stderr
+    assert "UI_IMPORT_OK" in import_check.stdout
+
     # 6. api NUNCA publicado al host.
     assert _host_port_unreachable(8000)
 
@@ -261,6 +286,11 @@ def test_p19_docker_compose_end_to_end(compose_project) -> None:
     assert _OPPONENT not in combined_logs
     assert str(snapshot_path) not in combined_logs
     assert "TENNIS_TACTICAL_SNAPSHOT_HOST_PATH" not in combined_logs
+    # Regresion del ModuleNotFoundError reportado en produccion: ningun
+    # servicio debe haber registrado un traceback de importacion.
+    assert "ModuleNotFoundError" not in combined_logs
+    assert "No module named 'src'" not in combined_logs
+    assert "Traceback (most recent call last)" not in combined_logs
 
     ps = _run(
         ["docker", "compose", "-p", project, "ps", "--format", "json"],
