@@ -37,12 +37,6 @@ La interfaz guía la selección en tres pasos (jugador → rival → fecha de
 corte), y solo permite elegir combinaciones que existen en los datos
 disponibles.
 
-## Captura o demostración
-
-*(Pendiente: añadir aquí una captura de pantalla de la interfaz o un GIF
-corto de la demostración. Para generarla, ejecuta la demo siguiendo la
-sección siguiente y guarda la imagen en, por ejemplo,
-`docs/images/ui-overview.png`.)*
 
 ## Demostración reproducible
 
