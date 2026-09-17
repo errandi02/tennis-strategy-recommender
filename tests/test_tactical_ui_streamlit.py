@@ -414,13 +414,19 @@ def test_cache_de_catalogo_tiene_ttl_acotado_y_nunca_cachea_errores() -> None:
 
 
 def test_dependencia_y_comando_desactivan_telemetria() -> None:
+    """El comando de arranque manual (P18 local) vive en el historial
+    tecnico desde el cierre documental: README.md es ahora la puerta de
+    entrada orientada a la demo/Docker, no a la ejecucion manual paso a
+    paso."""
     requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert requirements.splitlines().count("streamlit==1.63.0") == 1
-    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    history = (
+        _ROOT / "docs" / "DEVELOPMENT_AND_VALIDATION_HISTORY.md"
+    ).read_text(encoding="utf-8")
     assert (
         "streamlit run src/ui/streamlit_app.py "
         "--browser.gatherUsageStats false"
-    ) in readme
+    ) in history
 
 
 def test_wizard_state_keys_are_stable_string_constants() -> None:
